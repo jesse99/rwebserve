@@ -1,0 +1,15 @@
+#[link(name = "rwebserve", vers = "0.1", uuid = "00E58FAE-72B7-435F-88F4-0A7BD11CAF5C")];
+#[crate_type = "lib"];
+
+#[author = "Jesse Jones"];
+#[license = "MIT"];
+#[doc = "Web server library"];
+
+use std;
+use mustache (name = "mustache", vers = "0.1");
+use rparse (name = "rparse", vers = "0.3");
+use socket (name = "socket", vers = "0.1");
+
+mod http_parser;
+mod server;
+

@@ -1,0 +1,50 @@
+REST in Practice
+RESTful Web Services
+RESTful Web Services Cookbook
+
+* Change the current handlers to use request and response.
+* Add support for uri tmplate matching (maybe start unit testing to).
+* Add uri template => route registration.
+* Add route, mime types => handler registration.
+* Add default css handler.
+* Add support for other http methods besides GET.
+* Make sure examples are well commented.
+* Look at some python or haskell web servers.
+* Look at:
+	- hal, rest-style json: http://stateless.co/hal_specification.html
+* Work on restbucks exmaple
+* Talk about architecture.
+* Servers need to handle Connection: close in requests
+
+/Users/jessejones/Documents/Developer/rust.rtf
+http://www.w3schools.com/html5/html5_reference.asp
+http://htmldog.com/reference/htmltags/
+
+
+request: GET / HTTP/1.1\r\n
+Host: localhost:8080\r\n
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:11.0) Gecko/20100101 Firefox/11.0\r\n
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n
+Accept-Language: en-us,en;q=0.5\r\n
+Accept-Encoding: gzip, deflate\r\n
+Connection: keep-alive\r\n
+\r\n
+
+
+REST		http://kellabyte.com/2011/09/04/clarifying-rest/    http://codebetter.com/glennblock/2011/05/09/hypermedia-and-forms/
+1) Each request from the client to the server must contain all of the data that is necessary to handle the request
+2) The data within a response to a request must be implicitly or explicitly labeled as cacheable or non-cacheable
+3) Each layer cannot see beyond the immediate layer with which it is communicating with
+4) Uniform interface
+4a) Each resource has a URI and is access through a defined set of HTTP methods (GET, PUT, POST, DELETE)
+4b) Each resource can have one or more representations. Such as application/xml, application/json, text/html, etc
+4c) Self-descriptive messages: Requests and responses contain not only data but additional headers describing how the content should be handled
+4d) Hypermedia as the engine for application state
+
+A REST API must not define fixed resource names or hierarchies (an obvious coupling
+of client and server). Servers must have the freedom to control their own namespace. 
+Instead, allow servers to instruct clients on how to construct appropriate URIs, such 
+as is done in HTML forms and URI templates, by defining those instructions within 
+media types and link relations. [Failure here implies that clients are assuming a 
+resource structure due to out-of band information, such as a domain-specific 
+standard, which is the data-oriented equivalent to RPC's functional coupling].

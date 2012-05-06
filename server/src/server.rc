@@ -1,0 +1,12 @@
+// If this version is changed also change the version in main.rs.
+#[link(name = "sample server", vers = "0.1", uuid = "23F84887-C27F-42C6-9BCE-6237590CB8F7")];
+
+#[author = "Jesse Jones"];
+#[license = "MIT"];
+#[doc = "Sample rrest web server"];
+
+use std;
+use mustache (name = "mustache", vers = "0.1");
+use rwebserve (name = "rwebserve", vers = "0.1");
+
+mod main;
