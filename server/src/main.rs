@@ -77,15 +77,16 @@ fn process_command_line(args: [str]) -> str
 	str::slice(args[1], str::len("--root="), str::len(args[1]))
 }
 
-fn map_url(url: str) -> str
+fn home_view(options: options, response: server::response) -> server::response
 {
-	url
+	response.context.insert("admin", mustache::bool(options.admin));
+	{template: "home.html" with response}
 }
 
-fn init_context(options: options, _url: str, context: std::map::hashmap<str, mustache::data>)
+fn greeting_view(response: server::response) -> server::response
 {
-	context.insert("user-name", mustache::str("Joe Bob"));
-	context.insert("admin", mustache::bool(options.admin));
+	response.context.insert("user-name", mustache::str("Joe Bob"));
+	{template: "hello.html" with response}
 }
 
 fn main(args: [str])
@@ -94,15 +95,17 @@ fn main(args: [str])
 	let options = parse_command_line(args);
 	validate_options(options);
 	
-	let handler: server::context_handler = {|url, context| init_context(options, url, context)};	// need a unique pointer so bind doesn't work
+	let home: server::response_handler = {|response| home_view(options, response)};	// need the temporary in order to get a unique fn pointer
 	
 	let config = {
+		host: "localhost",
+		port: 8088_u16,
 		server_info: "sample rrest server " + get_version(),
 		resources_root: options.root,
-		url_mapper: map_url,
-		update_context: handler,
-		host: "localhost",
-		port: 8088_u16};
+		uri_templates: [("/", "home"), ("/hello", "greeting")],
+		routes: [("home",  home), ("greeting", greeting_view)]
+		with server::initialize_config()};
+	
 	server::start(config);
 	#info["exiting sample server"];
 }
