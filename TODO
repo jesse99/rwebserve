@@ -2,11 +2,10 @@ REST in Practice
 RESTful Web Services
 RESTful Web Services Cookbook
 
-* Views should take a request object (eg for method and matches)
-* Respond with unhandled method error.
 * Make sure gnos still works (especially css files).
 * Add support for uri tmplate matching (maybe start unit testing to):
 	- change home so that it links to /hello/joe%20bob
+	- test a wacky method
 * Add default css handler.
 * Add support for other http methods besides GET.
 * Make sure examples are well commented.

@@ -191,6 +191,81 @@ fn missing_view(_request: request, response: response) -> response
 	{template: "not-found.html" with response}
 }
 
+fn validate_config(config: internal_config) -> str
+{
+	let mut errors = [];
+	
+	if str::is_empty(config.host)
+	{
+		vec::push(errors, "Host is empty.");
+	}
+	
+	if config.port < 1024_u16 && config.port != 80_u16
+	{
+		vec::push(errors, "Port should be 80 or 1024 or above.");
+	}
+	
+	if str::is_empty(config.server_info)
+	{
+		vec::push(errors, "server_info is empty.");
+	}
+	
+	if str::is_empty(config.resources_root)
+	{
+		vec::push(errors, "resources_root is empty.");
+	}
+	else if !os::path_is_dir(config.resources_root)
+	{
+		vec::push(errors, "resources_root is not a directory.");
+	}
+	
+	if str::is_empty(config.read_error2)
+	{
+		vec::push(errors, "read_error2 is empty.");
+	}
+	
+	if str::is_empty(config.read_error1)
+	{
+		vec::push(errors, "read_error1 is empty.");
+	}
+	
+	let mut missing_routes = [];
+	let mut routes = [];
+	for config.routes_table.each_value()
+	{|route|
+		if !config.views_table.contains_key(route)
+		{
+			vec::push(missing_routes, route);
+		}
+		vec::push(routes, route);
+	};
+	if vec::is_not_empty(missing_routes)
+	{
+		fn le(&&a: str, &&b: str) -> bool {a <= b}
+		let missing_routes = std::sort::merge_sort(le, missing_routes);		// order depends on hash, but for unit tests we want to use something more consistent
+		
+		vec::push(errors, #fmt["No views for the following routes: %s", str::connect(missing_routes, ", ")]);
+	}
+	
+	let mut missing_views = [];
+	for config.views_table.each_key()
+	{|route|
+		if !vec::contains(routes, route)
+		{
+			vec::push(missing_views, route);
+		}
+	};
+	if vec::is_not_empty(missing_views)
+	{
+		fn le(&&a: str, &&b: str) -> bool {a <= b}
+		let missing_views = std::sort::merge_sort(le, missing_views);
+		
+		vec::push(errors, #fmt["No routes for the following views: %s", str::connect(missing_views, ", ")]);
+	}
+	
+	ret str::connect(errors, " ");
+}
+
 fn get_body(config: internal_config, request: request, types: [str]) -> (response, str)
 {
 	if request.url == "/shutdown"		// TODO: enable this via debug cfg (or maybe via a command line option)
@@ -386,34 +461,41 @@ fn recv_request(sock: @socket::socket_handle) -> str unsafe
 // TODO:
 // should add date header (which must adhere to rfc1123)
 // include last-modified and maybe etag
-// check connection: keep-alive
+fn process_request(config: internal_config, request: http_request) -> (str, str)
+{
+	#info["Servicing GET for %s", request.url];
+	
+	let request = {method: "GET", url: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
+	let types = if request.headers.contains_key("Accept") {str::split_char(request.headers.get("Accept"), ',')} else {["text/html"]};
+	let (response, body) = get_body(config, request, types);
+	
+	let mut headers = "";
+	for response.headers.each()
+	{|name, value|
+		if name == "Content-Length" && value == "0"
+		{
+			headers += #fmt["Content-Length: %?\r\n", str::len(body)];
+		}
+		else
+		{
+			headers += #fmt["%s: %s\r\n", name, value];
+		}
+	};
+	
+	let header = #fmt["HTTP/1.1 %s\r\n%s\r\n", response.status, headers];
+	#debug["response header: %s", header];
+	#debug["response body: %s", body];
+	
+	(header, body)
+}
+
+// TODO: check connection: keep-alive
 fn service_request(config: internal_config, sock: @socket::socket_handle, request: http_request)
 {
 	if request.major_version == 1 && request.minor_version >= 1
 	{
-		#info["Servicing GET for %s", request.url];
-		
-		let request = {method: "GET", url: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
-		let types = if request.headers.contains_key("Accept") {str::split_char(request.headers.get("Accept"), ',')} else {["text/html"]};
-		let (response, body) = get_body(config, request, types);
-		
-		let mut headers = "";
-		for response.headers.each()
-		{|name, value|
-			if name == "Content-Length" && value == "0"
-			{
-				headers += #fmt["Content-Length: %?\r\n", str::len(body)];
-			}
-			else
-			{
-				headers += #fmt["%s: %s\r\n", name, value];
-			}
-		};
-		
-		let header = #fmt["HTTP/1.1 %s\r\n%s\r\n", response.status, headers];
+		let (header, body) = process_request(config, request);
 		let trailer = "r\n\r\n";
-		#debug["response header: %s", header];
-		#debug["response body: %s", body];
 		str::as_buf(header) 	{|buffer| socket::send_buf(sock, buffer, str::len(header))};
 		str::as_buf(body)	{|buffer| socket::send_buf(sock, buffer, str::len(body))};
 		str::as_buf(trailer)  	{|buffer| socket::send_buf(sock, buffer, str::len(trailer))};
@@ -424,11 +506,9 @@ fn service_request(config: internal_config, sock: @socket::socket_handle, reques
 	}
 }
 
-// TODO: probably want to use task::unsupervise
-fn handle_client(config: config, fd: libc::c_int)
+fn config_to_internal(config: config) -> internal_config
 {
-	let iconfig = {
-		host: config.host,
+	{	host: config.host,
 		port: config.port,
 		server_info: config.server_info,
 		resources_root: config.resources_root,
@@ -438,7 +518,19 @@ fn handle_client(config: config, fd: libc::c_int)
 		missing: config.missing,
 		static_type_table: std::map::hash_from_strs(config.static_types),
 		read_error2: config.read_error2,
-		read_error1: config.read_error1};
+		read_error1: config.read_error1}
+}
+
+// TODO: probably want to use task::unsupervise
+fn handle_client(config: config, fd: libc::c_int)
+{
+	let iconfig = config_to_internal(config);
+	let err = validate_config(iconfig);
+	if str::is_not_empty(err)
+	{
+		#error["Invalid config: %s", err];
+		fail;
+	}
 	
 	let sock = @socket::socket_handle(fd);
 	let parse = make_parser();
@@ -481,3 +573,33 @@ fn attach(config: config, shandle: @socket::socket_handle) -> result<@socket::so
 	attach(config, shandle)
 }
 
+// ---- Unit Tests ------------------------------------------------------------
+#[test]
+fn routes_must_have_views()
+{
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "/tmp",
+		routes: [("/", "home"), ("/hello", "greeting"), ("/goodbye", "farewell")],
+		views: [("home",  missing_view)]
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+	
+	assert validate_config(iconfig) == "No views for the following routes: farewell, greeting";
+}
+
+#[test]
+fn views_must_have_routes()
+{
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "/tmp",
+		routes: [("/", "home")],
+		views: [("home",  missing_view), ("greeting",  missing_view), ("goodbye",  missing_view)]
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+	
+	assert validate_config(iconfig) == "No routes for the following views: goodbye, greeting";
+}

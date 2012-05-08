@@ -45,7 +45,7 @@ update-libraries:
 lib:
 	$(RUSTC) --out-dir bin -L bin -O src/rwebserve.rc
 
-bin/test-rwebserve: src/rwebserve.rc src/*.rs
+bin/test-server: src/rwebserve.rc src/*.rs
 	$(RUSTC) -g -L bin --test -o $@ $<
 
 bin/server: server/src/server.rc server/src/*.rs
