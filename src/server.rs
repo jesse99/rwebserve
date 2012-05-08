@@ -19,8 +19,9 @@ export request, response, response_handler, config, initialize_config, start;
 * static: used to handle URIs that don't match routes, but are found beneath resources_root.
 * missing: used to handle URIs that don't match routes, and are not found beneath resources_root.
 * static_types: maps file extensions (including the period) to mime types.
-* read_error2: html used when a file fails to load. Must include {{request-url}} and {{path}} templates.
-* read_error1: html used when a file fails to load. Must include {{request-url}} template.
+* read_error: html used when a file fails to load. Must include {{request-url}} template.
+* load_rsrc: maps a path rooted at resources_root to a resource body.
+* valid_rsrc: returns true if a path rooted at resources_root points to a file.
 
 initialize_config can be used to initialize some of these fields.
 "]
@@ -34,8 +35,9 @@ type config = {
 	static: response_handler,
 	missing: response_handler,
 	static_types: [(str, str)],
-	read_error2: str,
-	read_error1: str};
+	read_error: str,
+	load_rsrc: rsrc_loader,
+	valid_rsrc: rsrc_exists};
 	
 #[doc = "Information about incoming http requests. Passed into view functions.
 
@@ -84,14 +86,21 @@ On exit:
 After the function returns a base-url entry is added to the context with the url to the directory containing the template file."]
 type response_handler = fn~ (request, response) -> response;
 
+#[doc = "Maps a path rooted at resources_root to a resource body."]
+type rsrc_loader = fn~ (str) -> result::result<str, str>;
+
+#[doc = "Returns true if a path rooted at resources_root points to a file."]
+type rsrc_exists = fn~ (str) -> bool;
+
 #[doc = "Initalizes several config fields.
 
 * port is initialized to 80.
 * static is initialized to a reasonable view handler.
 * missing is initialized to a view that assume a \"not-found.html\" is at the root.
 * static_types is given entries for audio, image, video, and text extensions.
-* read_error2 is initialized to a reasonable English language html error message.
-* read_error1 is initialized to a reasonable English language html error message.
+* read_error is initialized to a reasonable English language html error message.
+* load_rsrc: is initialized to io::read_whole_file_str.
+* valid_rsrc: is initialized to os::path_exists.
 "]
 fn initialize_config() -> config
 {
@@ -129,18 +138,14 @@ fn initialize_config() -> config
 		(".mpg", "video/mpeg"),
 		(".mpeg", "video/mpeg"),
 		(".qt", "video/quicktime")],
-	read_error2: "<!DOCTYPE html>
+	read_error: "<!DOCTYPE html>
 <meta charset=utf-8>
 
 <title>Error 403 (Forbidden)!</title>
 
-<p>Failed to process URL {{request-url} (could not read {{path}}).</p>",
-	read_error1: "<!DOCTYPE html>
-<meta charset=utf-8>
-
-<title>Error 403 (Forbidden)!</title>
-
-<p>Could not read URL {{request-url}}.</p>"}
+<p>Could not read URL {{request-url}}.</p>",
+	load_rsrc: io::read_whole_file_str,
+	valid_rsrc: os::path_exists}
 }
 
 #[doc = "Startup the server.
@@ -174,8 +179,9 @@ type internal_config = {
 	static: response_handler,
 	missing: response_handler,
 	static_type_table: hashmap<str, str>,
-	read_error2: str,
-	read_error1: str};
+	read_error: str,
+	load_rsrc: rsrc_loader,
+	valid_rsrc: rsrc_exists};
 
 // Default config.static view handler.
 fn static_view(_request: request, response: response) -> response
@@ -219,14 +225,9 @@ fn validate_config(config: internal_config) -> str
 		vec::push(errors, "resources_root is not a directory.");
 	}
 	
-	if str::is_empty(config.read_error2)
+	if str::is_empty(config.read_error)
 	{
-		vec::push(errors, "read_error2 is empty.");
-	}
-	
-	if str::is_empty(config.read_error1)
-	{
-		vec::push(errors, "read_error1 is empty.");
+		vec::push(errors, "read_error is empty.");
 	}
 	
 	let mut missing_routes = [];
@@ -316,23 +317,27 @@ fn find_handler(config: internal_config, request_url: str, types: [str]) -> (str
 		}
 	}
 	
-	// See if the url matches a file under the resource root.
+	// See if the url matches a file under the resource root (i.e. the url can't have too many .. components).
 	if option::is_none(handler)
 	{
 		let path = path::normalize(path::connect(config.resources_root, request_url));
-		if path.starts_with(config.resources_root)
+		if str::starts_with(path, config.resources_root)
 		{
-			if os::path_exists(path)
+			if config.valid_rsrc(path)
 			{
-				result_type = path_to_type(config, request_url);
-				handler = option::some(config.static);
+				let mime_type = path_to_type(config, request_url);
+				if vec::contains(types, mime_type)
+				{
+					result_type = mime_type + "; charset=UTF-8";
+					handler = option::some(config.static);
+				}
 			}
 		}
 		else
 		{
 			status_code = "403";			// don't allow access to files not under resources_root
 			status_mesg = "Forbidden";
-			let (_, _, _, h) = find_handler(config, "forbidden", ["types/html"]);
+			let (_, _, _, h) = find_handler(config, "forbidden.html", ["types/html"]);
 			handler = option::some(h);
 		}
 	}
@@ -367,7 +372,7 @@ fn process_template(config: internal_config, response: response, request_url: st
 {
 	let path = path::connect(config.resources_root, response.template);
 	let (response, body) =
-		alt io::read_whole_file_str(path)
+		alt config.load_rsrc(path)
 		{
 			result::ok(v)
 			{
@@ -375,20 +380,15 @@ fn process_template(config: internal_config, response: response, request_url: st
 			}
 			result::err(mesg)
 			{
+				// We hard-code the body to ensure that we can always return something.
 				let context = std::map::str_hash();
-				context.insert("request-url", response.context.get("request-url"));
-				let body =
-					if mustache::str(response.template) != response.context.get("request-url")
-					{
-						// We hard-code the body to ensure that we can always return something.
-						context.insert("path", mustache::str(response.template));
-						mustache::render_str(config.read_error2, context)
-					}
-					else
-					{
-						mustache::render_str(config.read_error1, context)
-					};
-				#error["Error '%s' tying to read '%s'", mesg, path];
+				context.insert("request-url", mustache::str(request_url));
+				let body = mustache::render_str(config.read_error, context);
+				
+				if config.server_info != "unit test"
+				{
+					#error["Error '%s' tying to read '%s'", mesg, path];
+				}
 				(make_initial_response(config, "403", "Forbidden", "text/html; charset=UTF-8", request_url), body)
 			}
 		};
@@ -416,19 +416,19 @@ fn path_to_type(config: internal_config, path: str) -> str
 		{
 			option::some(v)
 			{
-				v + "; charset=UTF-8"
+				v
 			}
 			option::none
 			{
 				#warn["Couldn't find a static_types entry for %s", path];
-				"text/html; charset=UTF-8"
+				"text/html"
 			}
 		}
 	}
 	else
 	{
 		#warn["Can't determine mime type for %s", path];
-		"text/html; charset=UTF-8"
+		"text/html"
 	}
 }
 
@@ -517,8 +517,9 @@ fn config_to_internal(config: config) -> internal_config
 		static: config.static,
 		missing: config.missing,
 		static_type_table: std::map::hash_from_strs(config.static_types),
-		read_error2: config.read_error2,
-		read_error1: config.read_error1}
+		read_error: config.read_error,
+		load_rsrc: config.load_rsrc,
+		valid_rsrc: config.valid_rsrc}
 }
 
 // TODO: probably want to use task::unsupervise
@@ -602,4 +603,156 @@ fn views_must_have_routes()
 	let iconfig = config_to_internal(config);
 	
 	assert validate_config(iconfig) == "No routes for the following views: goodbye, greeting";
+}
+
+#[cfg(test)]
+fn test_view(_request: request, response: response) -> response
+{
+	{template: "test.html" with response}
+}
+
+#[cfg(test)]
+fn null_loader(path: str) -> result::result<str, str>
+{
+	result::ok(path + " contents")
+}
+
+#[cfg(test)]
+fn err_loader(path: str) -> result::result<str, str>
+{
+	result::err(path + " failed to load")
+}
+
+#[cfg(test)]
+fn make_request(url: str, mime_type: str) -> http_request
+{
+	let headers = std::map::hash_from_strs([
+		("Host", "localhost:8080"),
+		("User-Agent", "Mozilla/5.0"),
+		("Accept", mime_type),
+		("Accept-Language", "en-us,en"),
+		("Accept-Encoding", "gzip, deflate"),
+		("Connection", "keep-alive")]);
+	{method: "GET", major_version: 1, minor_version: 1, url: url, headers: headers, body: ""}
+}
+
+#[test]
+fn html_route()
+{
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "/tmp",
+		routes: [("/foo/bar", "foo")],
+		views: [("foo",  test_view)],
+		load_rsrc: null_loader
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+	
+	let request = make_request("/foo/bar", "text/html");
+	let (_header, body) = process_request(iconfig, request);
+	
+	assert body == "/tmp/test.html contents";
+}
+
+#[test]
+fn route_with_bad_type()
+{
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "/tmp",
+		routes: [("/foo/bar", "foo")],
+		views: [("foo",  test_view)],
+		load_rsrc: null_loader
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+	
+	let request = make_request("/foo/bar", "text/zzz");
+	let (header, body) = process_request(iconfig, request);
+	
+	assert header.contains("Content-Type: text/html");
+	assert body == "/tmp/not-found.html contents";
+}
+
+#[test]
+fn non_html_route()
+{
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "/tmp",
+		routes: [("/foo/bar<text/csv>", "foo")],
+		views: [("foo",  test_view)],
+		load_rsrc: null_loader
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+	
+	let request = make_request("/foo/bar", "text/csv");
+	let (_header, body) = process_request(iconfig, request);
+	
+	assert body == "/tmp/test.html contents";
+}
+
+#[test]
+fn static_route()
+{
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "/tmp",
+		routes: [("/foo/bar", "foo")],
+		views: [("foo",  test_view)],
+		load_rsrc: null_loader,
+		valid_rsrc: {|_path| true}
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+	
+	let request = make_request("/foo/baz.jpg", "text/html,image/jpeg");
+	let (header, body) = process_request(iconfig, request);
+	
+	assert header.contains("Content-Type: image/jpeg");
+	assert body == "/tmp/foo/baz.jpg contents";
+}
+
+#[test]
+fn static_with_bad_type()
+{
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "/tmp",
+		routes: [("/foo/bar", "foo")],
+		views: [("foo",  test_view)],
+		load_rsrc: null_loader,
+		valid_rsrc: {|_path| true}
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+	
+	let request = make_request("/foo/baz.jpg", "text/zzz");
+	let (header, body) = process_request(iconfig, request);
+	
+	assert header.contains("Content-Type: text/html");
+	assert body == "/tmp/not-found.html contents";
+}
+
+#[test]
+fn bad_url()
+{
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "/tmp",
+		routes: [("/foo/bar", "foo")],
+		views: [("foo",  test_view)],
+		load_rsrc: err_loader,
+		valid_rsrc: {|path| !str::contains(path, "baz")}
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+	
+	let request = make_request("/foo/baz.jpg", "text/html,image/jpeg");
+	let (header, body) = process_request(iconfig, request);
+	
+	assert header.contains("Content-Type: text/html");
+	assert str::contains(body, "Could not read URL /foo/baz.jpg");
 }
