@@ -77,13 +77,13 @@ fn process_command_line(args: [str]) -> str
 	str::slice(args[1], str::len("--root="), str::len(args[1]))
 }
 
-fn home_view(options: options, response: server::response) -> server::response
+fn home_view(options: options, _request: server::request, response: server::response) -> server::response
 {
 	response.context.insert("admin", mustache::bool(options.admin));
 	{template: "home.html" with response}
 }
 
-fn greeting_view(response: server::response) -> server::response
+fn greeting_view(_request: server::request, response: server::response) -> server::response
 {
 	response.context.insert("user-name", mustache::str("Joe Bob"));
 	{template: "hello.html" with response}
@@ -95,7 +95,7 @@ fn main(args: [str])
 	let options = parse_command_line(args);
 	validate_options(options);
 	
-	let home: server::response_handler = {|response| home_view(options, response)};	// need the temporary in order to get a unique fn pointer
+	let home: server::response_handler = {|request, response| home_view(options, request, response)};	// need the temporary in order to get a unique fn pointer
 	
 	let config = {
 		host: "localhost",
@@ -103,7 +103,7 @@ fn main(args: [str])
 		server_info: "sample rrest server " + get_version(),
 		resources_root: options.root,
 		routes: [("/", "home"), ("/hello", "greeting")],
-		views: [("home",  home_view), ("greeting", greeting_view)]
+		views: [("home",  home), ("greeting", greeting_view)]
 		with server::initialize_config()};
 	
 	server::start(config);

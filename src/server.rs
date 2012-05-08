@@ -5,7 +5,7 @@ import socket;
 import std::map::hashmap; 
 import http_parser::*;
 
-export response, response_handler, config, initialize_config, start;
+export request, response, response_handler, config, initialize_config, start;
 
 // ---- Exported Items --------------------------------------------------------
 #[doc = "Configuration information for the web server.
@@ -36,18 +36,30 @@ type config = {
 	static_types: [(str, str)],
 	read_error2: str,
 	read_error1: str};
+	
+#[doc = "Information about incoming http requests. Passed into view functions.
 
-#[doc = "Used by functions to generate responses to http requests.
+* method: \"GET\", \"PUSH\", \"POST\", etc.
+* request_url: path component of the URL.
+* matches: contains entries from request_url matching a routes URI template.
+* headers: headers from the http request.
+* body: body of the http request."]
+type request = {
+	method: str,
+	url: str,
+	matches: hashmap<str, str>,
+	headers: hashmap<str, str>,
+	body: str};
+
+#[doc = "Returned by view functions and used to generate http response messages.
 
 * status: the status code and message for the response.
 * headers: the HTTP headers to be included in the response.
-* matches: contains the entries from the request URL that match the uri template.
 * template: path relative to resources_root containing a template file.
 * context: hashmap used when rendering the template file."]
 type response = {
 	status: str,
 	headers: hashmap<str, str>,
-	matches: hashmap<str, str>,
 	template: str,
 	context: hashmap<str, mustache::data>};
 
@@ -70,7 +82,7 @@ On exit:
 * context: new entries will often be added. If template is not actually a template file empty the context.
 
 After the function returns a base-url entry is added to the context with the url to the directory containing the template file."]
-type response_handler = fn~ (response) -> response;
+type response_handler = fn~ (request, response) -> response;
 
 #[doc = "Initalizes several config fields.
 
@@ -166,7 +178,7 @@ type internal_config = {
 	read_error1: str};
 
 // Default config.static view handler.
-fn static_view(response: server::response) -> server::response
+fn static_view(_request: request, response: response) -> response
 {
 	let path = mustache::render_str("{{request-url}}", response.context);
 	{template: path, context: std::map::str_hash() with response}
@@ -174,27 +186,27 @@ fn static_view(response: server::response) -> server::response
 
 // Default config.missing handler. Assumes that there is a "not-found.html"
 // file at the resource root.
-fn missing_view(response: server::response) -> server::response
+fn missing_view(_request: request, response: response) -> response
 {
 	{template: "not-found.html" with response}
 }
 
-fn get_body(config: internal_config, request_url: str, types: [str]) -> (response, str)
+fn get_body(config: internal_config, request: request, types: [str]) -> (response, str)
 {
-	if request_url == "/shutdown"		// TODO: enable this via debug cfg (or maybe via a command line option)
+	if request.url == "/shutdown"		// TODO: enable this via debug cfg (or maybe via a command line option)
 	{
 		#info["received shutdown request"];
 		libc::exit(0_i32)
 	}
 	else
 	{
-		let (status_code, status_mesg, mime_type, handler) = find_handler(config, request_url, types);
+		let (status_code, status_mesg, mime_type, handler) = find_handler(config, request.url, types);
 		
-		let response = make_initial_response(config, status_code, status_mesg, mime_type, request_url);
-		let response = handler(response);
+		let response = make_initial_response(config, status_code, status_mesg, mime_type, request.url);
+		let response = handler(request, response);
 		assert str::is_not_empty(response.template);
 		
-		process_template(config, response, request_url)
+		process_template(config, response, request.url)
 	}
 }
 
@@ -273,7 +285,7 @@ fn make_initial_response(config: internal_config, status_code: str, status_mesg:
 	context.insert("status-code", mustache::str(status_code));
 	context.insert("status-mesg", mustache::str(status_mesg));
 	
-	{status: status_code + " " + status_mesg, headers: headers, matches: std::map::str_hash(), template: "", context: context}
+	{status: status_code + " " + status_mesg, headers: headers, template: "", context: context}
 }
 
 fn process_template(config: internal_config, response: response, request_url: str) -> (response, str)
@@ -381,8 +393,9 @@ fn service_request(config: internal_config, sock: @socket::socket_handle, reques
 	{
 		#info["Servicing GET for %s", request.url];
 		
+		let request = {method: "GET", url: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
 		let types = if request.headers.contains_key("Accept") {str::split_char(request.headers.get("Accept"), ',')} else {["text/html"]};
-		let (response, body) = get_body(config, request.url, types);
+		let (response, body) = get_body(config, request, types);
 		
 		let mut headers = "";
 		for response.headers.each()

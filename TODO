@@ -2,7 +2,6 @@ REST in Practice
 RESTful Web Services
 RESTful Web Services Cookbook
 
-* Do a commit.
 * Views should take a request object (eg for method and matches)
 * Respond with unhandled method error.
 * Make sure gnos still works (especially css files).
