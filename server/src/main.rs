@@ -102,11 +102,11 @@ fn main(args: [str])
 		port: 8088_u16,
 		server_info: "sample rrest server " + get_version(),
 		resources_root: options.root,
-		uri_templates: [("/", "home"), ("/hello", "greeting")],
-		routes: [("home",  home), ("greeting", greeting_view)]
+		routes: [("/", "home"), ("/hello", "greeting")],
+		views: [("home",  home_view), ("greeting", greeting_view)]
 		with server::initialize_config()};
 	
 	server::start(config);
-	#info["exiting sample server"];
+	#info["exiting sample server"];		// usually don't land here
 }
 

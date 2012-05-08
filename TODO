@@ -2,17 +2,19 @@ REST in Practice
 RESTful Web Services
 RESTful Web Services Cookbook
 
-* Change the current handlers to use request and response.
-* Add support for uri tmplate matching (maybe start unit testing to).
-* Add uri template => route registration.
-* Add route, mime types => handler registration.
+* Do a commit.
+* Views should take a request object (eg for method and matches)
+* Respond with unhandled method error.
+* Make sure gnos still works (especially css files).
+* Add support for uri tmplate matching (maybe start unit testing to):
+	- change home so that it links to /hello/joe%20bob
 * Add default css handler.
 * Add support for other http methods besides GET.
 * Make sure examples are well commented.
 * Look at some python or haskell web servers.
 * Look at:
 	- hal, rest-style json: http://stateless.co/hal_specification.html
-* Work on restbucks exmaple
+* Work on restbucks example.
 * Talk about architecture.
 * Servers need to handle Connection: close in requests
 

@@ -14,10 +14,10 @@ export response, response_handler, config, initialize_config, start;
 * port is the TCP port that the server listens on.
 * server_info is included in the HTTP response and should include the server name and version.
 * resources_root should be a path to where the files associated with URLs are loaded from.
-* uri_templates: maps URI templates (\"/hello/{name}\") to routes (\"greeting\"). To support non text/html types append the template with \"<some/type>\".
-* routes: maps routes to reponse handler functions.
-* static: used to handle URIs that don't match uri_templates, but are found beneath resources_root.
-* missing: used to handle URIs that don't match uri_templates, and are not found beneath resources_root.
+* routes: maps URI templates (\"/hello/{name}\") to route names (\"greeting\"). To support non text/html types append the template with \"<some/type>\".
+* views: maps route names to view handler functions.
+* static: used to handle URIs that don't match routes, but are found beneath resources_root.
+* missing: used to handle URIs that don't match routes, and are not found beneath resources_root.
 * static_types: maps file extensions (including the period) to mime types.
 * read_error2: html used when a file fails to load. Must include {{request-url}} and {{path}} templates.
 * read_error1: html used when a file fails to load. Must include {{request-url}} template.
@@ -29,8 +29,8 @@ type config = {
 	port: u16,
 	server_info: str,
 	resources_root: str,
-	uri_templates: [(str, str)],				// better to use hashmap, but those are not sendable
-	routes: [(str, response_handler)],
+	routes: [(str, str)],					// better to use hashmap, but afaict there is no way to send a hashmap to a task
+	views: [(str, response_handler)],
 	static: response_handler,
 	missing: response_handler,
 	static_types: [(str, str)],
@@ -88,8 +88,8 @@ fn initialize_config() -> config
 	port: 80_u16,
 	server_info: "",
 	resources_root: "",
-	uri_templates: [],
 	routes: [],
+	views: [],
 	static: static_view,
 	missing: missing_view,
 	static_types: [
@@ -150,25 +150,30 @@ fn start(config: config)
 // ---- Internal Items --------------------------------------------------------
 const max_request_len:uint = 2048u;		// TODO: the standard says that there is no upper bound on these…
 
+// Task specific version of config. Should be identical to config (except that it uses
+// hashmaps instead of arrays of tuples).
 type internal_config = {
 	host: str,
 	port: u16,
 	server_info: str,
 	resources_root: str,
-	uri_table: hashmap<str, str>,
-	route_table: hashmap<str, response_handler>,
+	routes_table: hashmap<str, str>,
+	views_table: hashmap<str, response_handler>,
 	static: response_handler,
 	missing: response_handler,
 	static_type_table: hashmap<str, str>,
 	read_error2: str,
 	read_error1: str};
 
+// Default config.static view handler.
 fn static_view(response: server::response) -> server::response
 {
 	let path = mustache::render_str("{{request-url}}", response.context);
 	{template: path, context: std::map::str_hash() with response}
 }
 
+// Default config.missing handler. Assumes that there is a "not-found.html"
+// file at the resource root.
 fn missing_view(response: server::response) -> server::response
 {
 	{template: "not-found.html" with response}
@@ -203,8 +208,8 @@ fn find_handler(config: internal_config, request_url: str, types: [str]) -> (str
 	// Try to find (an implicit) text/html handler.
 	if vec::contains(types, "text/html")
 	{
-		handler = option::chain(config.uri_table.find(request_url))
-			{|route| option::some(config.route_table.get(route))};
+		handler = option::chain(config.routes_table.find(request_url))
+			{|route| option::some(config.views_table.get(route))};
 	}
 	
 	// Try to find a handler using an explicit mime type.
@@ -214,10 +219,10 @@ fn find_handler(config: internal_config, request_url: str, types: [str]) -> (str
 		{|mime_type|
 			let candidate = #fmt["%s<%s>", request_url, mime_type];
 			
-			let route = config.uri_table.find(candidate);
+			let route = config.routes_table.find(candidate);
 			if option::is_some(route)
 			{
-				handler = option::some(config.route_table.get(option::get(route)));
+				handler = option::some(config.views_table.get(option::get(route)));
 				result_type = mime_type + "; charset=UTF-8";
 				break;
 			}
@@ -366,8 +371,6 @@ fn recv_request(sock: @socket::socket_handle) -> str unsafe
 	}
 }
 
-// fn get_body(config: config, request_url: str, types: [str]) -> (response, str)
-
 // TODO:
 // should add date header (which must adhere to rfc1123)
 // include last-modified and maybe etag
@@ -416,8 +419,8 @@ fn handle_client(config: config, fd: libc::c_int)
 		port: config.port,
 		server_info: config.server_info,
 		resources_root: config.resources_root,
-		uri_table: std::map::hash_from_strs(config.uri_templates),
-		route_table: std::map::hash_from_strs(config.routes),
+		routes_table: std::map::hash_from_strs(config.routes),
+		views_table: std::map::hash_from_strs(config.views),
 		static: config.static,
 		missing: config.missing,
 		static_type_table: std::map::hash_from_strs(config.static_types),
