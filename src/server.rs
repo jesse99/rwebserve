@@ -226,6 +226,20 @@ fn validate_config(config: internal_config) -> str
 		vec::push(errors, "resources_root is not a directory.");
 	}
 	
+	let mut names = [];
+	for vec::each(["forbidden.html", "home.html", "not-found.html", "not-supported.html"])
+	{|name|
+		let path = path::connect(config.resources_root, name);
+		if !os::path_exists(path)
+		{
+			vec::push(names, name);
+		}
+	};
+	if vec::is_not_empty(names)
+	{
+		vec::push(errors, "Missing required files: " + str::connect(names, ", "));
+	}
+	
 	if str::is_empty(config.read_error)
 	{
 		vec::push(errors, "read_error is empty.");
@@ -586,7 +600,7 @@ fn routes_must_have_views()
 	let config = {
 		host: "localhost",
 		server_info: "unit test",
-		resources_root: "/tmp",
+		resources_root: "server/html",
 		routes: [("/", "home"), ("/hello", "greeting"), ("/goodbye", "farewell")],
 		views: [("home",  missing_view)]
 		with server::initialize_config()};
@@ -601,13 +615,29 @@ fn views_must_have_routes()
 	let config = {
 		host: "localhost",
 		server_info: "unit test",
-		resources_root: "/tmp",
+		resources_root: "server/html",
 		routes: [("/", "home")],
 		views: [("home",  missing_view), ("greeting",  missing_view), ("goodbye",  missing_view)]
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
 	assert validate_config(iconfig) == "No routes for the following views: goodbye, greeting";
+}
+
+#[test]
+fn root_must_have_required_files()
+{
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "/tmp",
+		routes: [("/", "home")],
+		views: [("home",  missing_view)]
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+
+	io::println(validate_config(iconfig));
+	assert validate_config(iconfig) == "Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";
 }
 
 #[cfg(test)]
@@ -647,7 +677,7 @@ fn html_route()
 	let config = {
 		host: "localhost",
 		server_info: "unit test",
-		resources_root: "/tmp",
+		resources_root: "server/html",
 		routes: [("/foo/bar", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader
@@ -657,7 +687,7 @@ fn html_route()
 	let request = make_request("/foo/bar", "text/html");
 	let (_header, body) = process_request(iconfig, request);
 	
-	assert body == "/tmp/test.html contents";
+	assert body == "server/html/test.html contents";
 }
 
 #[test]
@@ -666,7 +696,7 @@ fn route_with_bad_type()
 	let config = {
 		host: "localhost",
 		server_info: "unit test",
-		resources_root: "/tmp",
+		resources_root: "server/html",
 		routes: [("/foo/bar", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader
@@ -678,7 +708,7 @@ fn route_with_bad_type()
 	
 	assert header.contains("404 Not Found");
 	assert header.contains("Content-Type: text/html");
-	assert body == "/tmp/not-found.html contents";
+	assert body == "server/html/not-found.html contents";
 }
 
 #[test]
@@ -687,7 +717,7 @@ fn non_html_route()
 	let config = {
 		host: "localhost",
 		server_info: "unit test",
-		resources_root: "/tmp",
+		resources_root: "server/html",
 		routes: [("/foo/bar<text/csv>", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader
@@ -697,7 +727,7 @@ fn non_html_route()
 	let request = make_request("/foo/bar", "text/csv");
 	let (_header, body) = process_request(iconfig, request);
 	
-	assert body == "/tmp/test.html contents";
+	assert body == "server/html/test.html contents";
 }
 
 #[test]
@@ -706,7 +736,7 @@ fn static_route()
 	let config = {
 		host: "localhost",
 		server_info: "unit test",
-		resources_root: "/tmp",
+		resources_root: "server/html",
 		routes: [("/foo/bar", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader,
@@ -718,7 +748,7 @@ fn static_route()
 	let (header, body) = process_request(iconfig, request);
 	
 	assert header.contains("Content-Type: image/jpeg");
-	assert body == "/tmp/foo/baz.jpg contents";
+	assert body == "server/html/foo/baz.jpg contents";
 }
 
 #[test]
@@ -727,7 +757,7 @@ fn static_with_bad_type()
 	let config = {
 		host: "localhost",
 		server_info: "unit test",
-		resources_root: "/tmp",
+		resources_root: "server/html",
 		routes: [("/foo/bar", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader,
@@ -739,7 +769,7 @@ fn static_with_bad_type()
 	let (header, body) = process_request(iconfig, request);
 	
 	assert header.contains("Content-Type: text/html");
-	assert body == "/tmp/not-found.html contents";
+	assert body == "server/html/not-found.html contents";
 }
 
 #[test]
@@ -748,7 +778,7 @@ fn bad_url()
 	let config = {
 		host: "localhost",
 		server_info: "unit test",
-		resources_root: "/tmp",
+		resources_root: "server/html",
 		routes: [("/foo/bar", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader,
@@ -761,7 +791,7 @@ fn bad_url()
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("404 Not Found");
-	assert str::contains(body, "/tmp/not-found.html content");
+	assert str::contains(body, "server/html/not-found.html content");
 }
 
 #[test]
@@ -770,7 +800,7 @@ fn path_outside_root()
 	let config = {
 		host: "localhost",
 		server_info: "unit test",
-		resources_root: "/tmp",
+		resources_root: "server/html",
 		routes: [("/foo/bar", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader,
@@ -785,7 +815,7 @@ fn path_outside_root()
 	io::println(body);
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("403 Forbidden");
-	assert str::contains(body, "/tmp/not-found.html contents");
+	assert str::contains(body, "server/html/not-found.html contents");
 }
 
 #[test]
@@ -794,7 +824,7 @@ fn read_error()
 	let config = {
 		host: "localhost",
 		server_info: "unit test",
-		resources_root: "/tmp",
+		resources_root: "server/html",
 		routes: [("/foo/baz", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: err_loader,
@@ -816,7 +846,7 @@ fn bad_version()
 	let config = {
 		host: "localhost",
 		server_info: "unit test",
-		resources_root: "/tmp",
+		resources_root: "server/html",
 		routes: [("/foo/baz", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader,
@@ -829,5 +859,5 @@ fn bad_version()
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("505 HTTP Version Not Supported");
-	assert str::contains(body, "/tmp/not-found.html contents");
+	assert str::contains(body, "server/html/not-found.html contents");
 }
