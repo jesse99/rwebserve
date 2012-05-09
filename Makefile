@@ -12,7 +12,7 @@ server: lib bin/server
 
 run: lib bin/server
 	git web--browse 'http://localhost:8088'
-	export RUST_LOG=rwebserve=2,socket=1 && ./bin/server --admin --root=server/html
+	export RUST_LOG=rwebserve=1,socket=1 && ./bin/server --admin --root=server/html
 	#export RUST_LOG=rwebserve=4,socket=4,::rt::mem=4,::rt::comm=4,::rt::task=4,::rt::dom=4,::rt::cache=4,::rt::upcall=4,::rt::timer=4,::rt::gc=4,::rt::stdlib=4,::rt::kern=4 &&./bin/server --root=server/html
 
 check: bin/test-server
@@ -48,5 +48,5 @@ lib:
 bin/test-server: src/rwebserve.rc src/*.rs
 	$(RUSTC) -g -L bin --test -o $@ $<
 
-bin/server: server/src/server.rc server/src/*.rs
+bin/server: server/src/server.rc server/src/*.rs bin/librwebserve*
 	$(RUSTC) -g -L bin -o $@ $<
