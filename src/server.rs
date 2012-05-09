@@ -23,8 +23,7 @@ export request, response, response_handler, config, initialize_config, start;
 * load_rsrc: maps a path rooted at resources_root to a resource body.
 * valid_rsrc: returns true if a path rooted at resources_root points to a file.
 
-initialize_config can be used to initialize some of these fields.
-"]
+initialize_config can be used to initialize some of these fields."]
 type config = {
 	host: str,
 	port: u16,
@@ -41,12 +40,14 @@ type config = {
 	
 #[doc = "Information about incoming http requests. Passed into view functions.
 
+* version: HTTP version.
 * method: \"GET\", \"PUSH\", \"POST\", etc.
 * request_url: path component of the URL.
 * matches: contains entries from request_url matching a routes URI template.
 * headers: headers from the http request.
 * body: body of the http request."]
 type request = {
+	version: str,
 	method: str,
 	url: str,
 	matches: hashmap<str, str>,
@@ -75,6 +76,7 @@ Context will be initialized with:
 * request-url: the url within the client request message (e.g. '/home').
 * status-code: the code that will be included in the response message (e.g. '200' or '404').
 * status-mesg: the code that will be included in the response message (e.g. 'OK' or 'Not Found').
+* request-version: HTTP version of the request message (e.g. '1.1').
 
 On exit:
 * status: is normally left unchanged.
@@ -100,8 +102,7 @@ type rsrc_exists = fn~ (str) -> bool;
 * static_types is given entries for audio, image, video, and text extensions.
 * read_error is initialized to a reasonable English language html error message.
 * load_rsrc: is initialized to io::read_whole_file_str.
-* valid_rsrc: is initialized to os::path_exists.
-"]
+* valid_rsrc: is initialized to os::path_exists."]
 fn initialize_config() -> config
 {
 	{
@@ -150,7 +151,7 @@ fn initialize_config() -> config
 
 #[doc = "Startup the server.
 
-Currently this will run until a client does a get on '/shutdown' in which case exit is called."]
+Currently this will run until a client does a GET on '/shutdown' in which case exit is called."]
 fn start(config: config)
 {
 	let r = result::chain(socket::bind_socket(config.host, config.port))
@@ -276,25 +277,34 @@ fn get_body(config: internal_config, request: request, types: [str]) -> (respons
 	}
 	else
 	{
-		let (status_code, status_mesg, mime_type, handler) = find_handler(config, request.url, types);
+		let (status_code, status_mesg, mime_type, handler) = find_handler(config, request.url, types, request.version);
 		
-		let response = make_initial_response(config, status_code, status_mesg, mime_type, request.url);
+		let response = make_initial_response(config, status_code, status_mesg, mime_type, request);
 		let response = handler(request, response);
 		assert str::is_not_empty(response.template);
 		
-		process_template(config, response, request.url)
+		process_template(config, response, request)
 	}
 }
 
-fn find_handler(config: internal_config, request_url: str, types: [str]) -> (str, str, str, response_handler)
+fn find_handler(config: internal_config, request_url: str, types: [str], version: str) -> (str, str, str, response_handler)
 {
 	let mut handler = option::none;
 	let mut status_code = "200";
 	let mut status_mesg = "OK";
 	let mut result_type = "text/html; charset=UTF-8";
 	
+	// According to section 3.1 servers are supposed to accept new minor version editions.
+	if !str::starts_with(version, "1.")
+	{
+		status_code = "505";
+		status_mesg = "HTTP Version Not Supported";
+		let (_, _, _, h) = find_handler(config, "not-supported.html", ["types/html"], "1.1");
+		handler = option::some(h);
+	}
+	
 	// Try to find (an implicit) text/html handler.
-	if vec::contains(types, "text/html")
+	if option::is_none(handler) && vec::contains(types, "text/html")
 	{
 		handler = option::chain(config.routes_table.find(request_url))
 			{|route| option::some(config.views_table.get(route))};
@@ -337,7 +347,7 @@ fn find_handler(config: internal_config, request_url: str, types: [str]) -> (str
 		{
 			status_code = "403";			// don't allow access to files not under resources_root
 			status_mesg = "Forbidden";
-			let (_, _, _, h) = find_handler(config, "forbidden.html", ["types/html"]);
+			let (_, _, _, h) = find_handler(config, "forbidden.html", ["types/html"], version);
 			handler = option::some(h);
 		}
 	}
@@ -353,7 +363,7 @@ fn find_handler(config: internal_config, request_url: str, types: [str]) -> (str
 	ret (status_code, status_mesg, result_type, option::get(handler));
 }
 
-fn make_initial_response(config: internal_config, status_code: str, status_mesg: str, mime_type: str, request_url: str) -> response
+fn make_initial_response(config: internal_config, status_code: str, status_mesg: str, mime_type: str, request: request) -> response
 {
 	let headers = std::map::hash_from_strs([
 		("Server", config.server_info),
@@ -361,14 +371,15 @@ fn make_initial_response(config: internal_config, status_code: str, status_mesg:
 		("Content-Type", mime_type)]);
 	
 	let context = std::map::str_hash();
-	context.insert("request-url", mustache::str(request_url));
+	context.insert("request-url", mustache::str(request.url));
 	context.insert("status-code", mustache::str(status_code));
 	context.insert("status-mesg", mustache::str(status_mesg));
+	context.insert("request-version", mustache::str(request.version));
 	
 	{status: status_code + " " + status_mesg, headers: headers, template: "", context: context}
 }
 
-fn process_template(config: internal_config, response: response, request_url: str) -> (response, str)
+fn process_template(config: internal_config, response: response, request: request) -> (response, str)
 {
 	let path = path::connect(config.resources_root, response.template);
 	let (response, body) =
@@ -382,14 +393,14 @@ fn process_template(config: internal_config, response: response, request_url: st
 			{
 				// We hard-code the body to ensure that we can always return something.
 				let context = std::map::str_hash();
-				context.insert("request-url", mustache::str(request_url));
+				context.insert("request-url", mustache::str(request.url));
 				let body = mustache::render_str(config.read_error, context);
 				
 				if config.server_info != "unit test"
 				{
 					#error["Error '%s' tying to read '%s'", mesg, path];
 				}
-				(make_initial_response(config, "403", "Forbidden", "text/html; charset=UTF-8", request_url), body)
+				(make_initial_response(config, "403", "Forbidden", "text/html; charset=UTF-8", request), body)
 			}
 		};
 	
@@ -465,7 +476,8 @@ fn process_request(config: internal_config, request: http_request) -> (str, str)
 {
 	#info["Servicing GET for %s", request.url];
 	
-	let request = {method: "GET", url: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
+	let version = #fmt["%d.%d", request.major_version, request.minor_version];
+	let request = {version: version, method: "GET", url: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
 	let types = if request.headers.contains_key("Accept") {str::split_char(request.headers.get("Accept"), ',')} else {["text/html"]};
 	let (response, body) = get_body(config, request, types);
 	
@@ -492,18 +504,11 @@ fn process_request(config: internal_config, request: http_request) -> (str, str)
 // TODO: check connection: keep-alive
 fn service_request(config: internal_config, sock: @socket::socket_handle, request: http_request)
 {
-	if request.major_version == 1 && request.minor_version >= 1
-	{
-		let (header, body) = process_request(config, request);
-		let trailer = "r\n\r\n";
-		str::as_buf(header) 	{|buffer| socket::send_buf(sock, buffer, str::len(header))};
-		str::as_buf(body)	{|buffer| socket::send_buf(sock, buffer, str::len(body))};
-		str::as_buf(trailer)  	{|buffer| socket::send_buf(sock, buffer, str::len(trailer))};
-	}
-	else
-	{
-		#error["Only HTTP 1.x is supported (and x must be greater than 0)"];
-	}
+	let (header, body) = process_request(config, request);
+	let trailer = "r\n\r\n";
+	str::as_buf(header) 	{|buffer| socket::send_buf(sock, buffer, str::len(header))};
+	str::as_buf(body)	{|buffer| socket::send_buf(sock, buffer, str::len(body))};
+	str::as_buf(trailer)  	{|buffer| socket::send_buf(sock, buffer, str::len(trailer))};
 }
 
 fn config_to_internal(config: config) -> internal_config
@@ -671,6 +676,7 @@ fn route_with_bad_type()
 	let request = make_request("/foo/bar", "text/zzz");
 	let (header, body) = process_request(iconfig, request);
 	
+	assert header.contains("404 Not Found");
 	assert header.contains("Content-Type: text/html");
 	assert body == "/tmp/not-found.html contents";
 }
@@ -745,8 +751,8 @@ fn bad_url()
 		resources_root: "/tmp",
 		routes: [("/foo/bar", "foo")],
 		views: [("foo",  test_view)],
-		load_rsrc: err_loader,
-		valid_rsrc: {|path| !str::contains(path, "baz")}
+		load_rsrc: null_loader,
+		valid_rsrc: {|_path| false}
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
@@ -754,5 +760,74 @@ fn bad_url()
 	let (header, body) = process_request(iconfig, request);
 	
 	assert header.contains("Content-Type: text/html");
+	assert header.contains("404 Not Found");
+	assert str::contains(body, "/tmp/not-found.html content");
+}
+
+#[test]
+fn path_outside_root()
+{
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "/tmp",
+		routes: [("/foo/bar", "foo")],
+		views: [("foo",  test_view)],
+		load_rsrc: null_loader,
+		valid_rsrc: {|_path| true}
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+	
+	let request = make_request("/foo/../../baz.jpg", "text/html,image/jpeg");
+	let (header, body) = process_request(iconfig, request);
+	
+	io::println(header);
+	io::println(body);
+	assert header.contains("Content-Type: text/html");
+	assert header.contains("403 Forbidden");
+	assert str::contains(body, "/tmp/not-found.html contents");
+}
+
+#[test]
+fn read_error()
+{
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "/tmp",
+		routes: [("/foo/baz", "foo")],
+		views: [("foo",  test_view)],
+		load_rsrc: err_loader,
+		valid_rsrc: {|_path| true}
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+	
+	let request = make_request("/foo/baz.jpg", "text/html,image/jpeg");
+	let (header, body) = process_request(iconfig, request);
+	
+	assert header.contains("Content-Type: text/html");
+	assert header.contains("403 Forbidden");
 	assert str::contains(body, "Could not read URL /foo/baz.jpg");
+}
+
+#[test]
+fn bad_version()
+{
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "/tmp",
+		routes: [("/foo/baz", "foo")],
+		views: [("foo",  test_view)],
+		load_rsrc: null_loader,
+		valid_rsrc: {|_path| true}
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+	
+	let request = {major_version: 100 with make_request("/foo/baz.jpg", "text/html,image/jpeg")};
+	let (header, body) = process_request(iconfig, request);
+	
+	assert header.contains("Content-Type: text/html");
+	assert header.contains("505 HTTP Version Not Supported");
+	assert str::contains(body, "/tmp/not-found.html contents");
 }

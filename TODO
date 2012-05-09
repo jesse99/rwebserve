@@ -2,15 +2,18 @@ REST in Practice
 RESTful Web Services
 RESTful Web Services Cookbook
 
-* Need to check status codes for the error cases.
-* Bad http version needs to return an error code.
-	let request = {minor_version: 100 with make_request("/foo/baz.jpg", "text/html,image/jpeg")};
+* Check for file outside root.
+* ALlow for multiple roots.
+* Check for multiple config errors.
 * Make sure we have tests for each error case.
+* Might want to check for unbalanced {{ (hangs mustache).
+	- maybe count {{ and then count }}
+* make sure sample server still works.
 * Do a commit.
-* Make sure gnos still works (especially css files).
 * Add support for uri template matching:
 	- change home so that it links to /hello/joe%20bob
 	- test a wacky method
+* Make sure gnos still works (especially css files).
 * Add default css handler.
 * Add support for other http methods besides GET.
 * Make sure examples are well commented.
