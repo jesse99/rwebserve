@@ -2,16 +2,12 @@ REST in Practice
 RESTful Web Services
 RESTful Web Services Cookbook
 
-* Allow for multiple roots.
-* Might want to check for unbalanced {{ (hangs mustache).
-	- maybe count {{ and then count }}
-* make sure sample server still works.
-* Do a commit.
 * Add support for uri template matching:
 	- change home so that it links to /hello/joe%20bob
 	- test a wacky method
 * Make sure gnos still works (especially css files):
 	- should error out with missing not-supported.html file
+	- set debug
 * Add default css handler.
 * Add support for other http methods besides GET.
 * Make sure examples are well commented.
@@ -21,6 +17,8 @@ RESTful Web Services Cookbook
 * Work on restbucks example.
 * Talk about architecture.
 * Servers need to handle Connection: close in requests
+
+* Allow for multiple roots.
 
 /Users/jessejones/Documents/Developer/rust.rtf
 /Users/jessejones/Documents/Developer/web.rtf

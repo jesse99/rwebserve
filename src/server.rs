@@ -1,6 +1,7 @@
 import option = option::option;
 import result = result::result;
 import io;
+import io::writer_util;
 import socket;
 import std::map::hashmap; 
 import http_parser::*;
@@ -22,6 +23,7 @@ export request, response, response_handler, config, initialize_config, start;
 * read_error: html used when a file fails to load. Must include {{request-url}} template.
 * load_rsrc: maps a path rooted at resources_root to a resource body.
 * valid_rsrc: returns true if a path rooted at resources_root points to a file.
+* settings: arbitrary key/value pairs passed into view handlers. If debug is \"true\" rwebserve debugging code will be enabled.
 
 initialize_config can be used to initialize some of these fields."]
 type config = {
@@ -36,7 +38,8 @@ type config = {
 	static_types: [(str, str)],
 	read_error: str,
 	load_rsrc: rsrc_loader,
-	valid_rsrc: rsrc_exists};
+	valid_rsrc: rsrc_exists,
+	settings: [(str, str)]};
 	
 #[doc = "Information about incoming http requests. Passed into view functions.
 
@@ -68,7 +71,7 @@ type response = {
 
 #[doc = "Function used to generate an HTTP response.
 
-On entry status will typically be set to \"200 OK\". Headers will include something like the following:
+On entry reponse.status will typically be set to \"200 OK\". response.headers will include something like the following:
 * Server: whizbang server 1.0
 * Content-Length: 0 (if non-zero rwebserve will not compute the body length)
 * Content-Type:  text/html; charset=UTF-8
@@ -78,15 +81,15 @@ Context will be initialized with:
 * status-mesg: the code that will be included in the response message (e.g. 'OK' or 'Not Found').
 * request-version: HTTP version of the request message (e.g. '1.1').
 
-On exit:
+On exit the response will have:
 * status: is normally left unchanged.
 * headers: existing headers may be modified and new ones added (e.g. to control caching).
 * matches: should not be changed.
 * template: should be set to a path relative to resources_root.
 * context: new entries will often be added. If template is not actually a template file empty the context.
 
-After the function returns a base-url entry is added to the context with the url to the directory containing the template file."]
-type response_handler = fn~ (request, response) -> response;
+After the function returns a base-url entry is added to the response.context with the url to the directory containing the template file."]
+type response_handler = fn~ (hashmap<str, str>, request, response) -> response;
 
 #[doc = "Maps a path rooted at resources_root to a resource body."]
 type rsrc_loader = fn~ (str) -> result::result<str, str>;
@@ -146,7 +149,8 @@ fn initialize_config() -> config
 
 <p>Could not read URL {{request-url}}.</p>",
 	load_rsrc: io::read_whole_file_str,
-	valid_rsrc: os::path_exists}
+	valid_rsrc: os::path_exists,
+	settings: []}
 }
 
 #[doc = "Startup the server.
@@ -182,10 +186,11 @@ type internal_config = {
 	static_type_table: hashmap<str, str>,
 	read_error: str,
 	load_rsrc: rsrc_loader,
-	valid_rsrc: rsrc_exists};
+	valid_rsrc: rsrc_exists,
+	settings: hashmap<str, str>};
 
 // Default config.static view handler.
-fn static_view(_request: request, response: response) -> response
+fn static_view(_settings: hashmap<str, str>, _request: request, response: response) -> response
 {
 	let path = mustache::render_str("{{request-url}}", response.context);
 	{template: path, context: std::map::str_hash() with response}
@@ -193,7 +198,7 @@ fn static_view(_request: request, response: response) -> response
 
 // Default config.missing handler. Assumes that there is a "not-found.html"
 // file at the resource root.
-fn missing_view(_request: request, response: response) -> response
+fn missing_view(_settings: hashmap<str, str>, _request: request, response: response) -> response
 {
 	{template: "not-found.html" with response}
 }
@@ -294,7 +299,7 @@ fn get_body(config: internal_config, request: request, types: [str]) -> (respons
 		let (status_code, status_mesg, mime_type, handler) = find_handler(config, request.url, types, request.version);
 		
 		let response = make_initial_response(config, status_code, status_mesg, mime_type, request);
-		let response = handler(request, response);
+		let response = handler(config.settings, request, response);
 		assert str::is_not_empty(response.template);
 		
 		process_template(config, response, request)
@@ -393,11 +398,58 @@ fn make_initial_response(config: internal_config, status_code: str, status_mesg:
 	{status: status_code + " " + status_mesg, headers: headers, template: "", context: context}
 }
 
+fn load_template(config: internal_config, path: str) -> result::result<str, str>
+{
+	// {{ should be followed by }} (rust-mustache hangs if this is not the case).
+	fn match_curly_braces(text: str) -> bool
+	{
+		let mut index = 0u;
+		
+		while index < str::len(text)
+		{
+			alt str::find_str_from(text, "{{", index)
+			{
+				option::some(i)
+				{
+					alt str::find_str_from(text, "}}", i + 2u)
+					{
+						option::some(j)
+						{
+							index = j + 2u;
+						}
+						option::none()
+						{
+							ret false;
+						}
+					}
+				}
+				option::none
+				{
+					break;
+				}
+			}
+		}
+		ret true;
+	}
+	
+	result::chain(config.load_rsrc(path))
+	{|template|
+		if !config.settings.contains_key("debug") || config.settings.get("debug") == "false" || match_curly_braces(template)
+		{
+			result::ok(template)
+		}
+		else
+		{
+			result::err("mismatched curly braces")
+		}
+	}
+}
+
 fn process_template(config: internal_config, response: response, request: request) -> (response, str)
 {
 	let path = path::connect(config.resources_root, response.template);
 	let (response, body) =
-		alt config.load_rsrc(path)
+		alt load_template(config, path)
 		{
 			result::ok(v)
 			{
@@ -538,7 +590,8 @@ fn config_to_internal(config: config) -> internal_config
 		static_type_table: std::map::hash_from_strs(config.static_types),
 		read_error: config.read_error,
 		load_rsrc: config.load_rsrc,
-		valid_rsrc: config.valid_rsrc}
+		valid_rsrc: config.valid_rsrc,
+		settings: std::map::hash_from_strs(config.settings)}
 }
 
 // TODO: probably want to use task::unsupervise
@@ -636,12 +689,11 @@ fn root_must_have_required_files()
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 
-	io::println(validate_config(iconfig));
 	assert validate_config(iconfig) == "Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";
 }
 
 #[cfg(test)]
-fn test_view(_request: request, response: response) -> response
+fn test_view(_settings: hashmap<str, str>, _request: request, response: response) -> response
 {
 	{template: "test.html" with response}
 }
@@ -811,8 +863,6 @@ fn path_outside_root()
 	let request = make_request("/foo/../../baz.jpg", "text/html,image/jpeg");
 	let (header, body) = process_request(iconfig, request);
 	
-	io::println(header);
-	io::println(body);
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("403 Forbidden");
 	assert str::contains(body, "server/html/not-found.html contents");
@@ -860,4 +910,35 @@ fn bad_version()
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("505 HTTP Version Not Supported");
 	assert str::contains(body, "server/html/not-found.html contents");
+}
+
+#[test]
+fn bad_template()
+{
+	let loader: rsrc_loader = {|_path| result::ok("unbalanced {{curly}} {{braces}")};
+	
+	let config = {
+		host: "localhost",
+		server_info: "unit test",
+		resources_root: "server/html",
+		routes: [("/foo/baz", "foo")],
+		views: [("foo",  test_view)],
+		load_rsrc: loader,
+		valid_rsrc: {|_path| true},
+		settings: [("debug", "true")]
+		with server::initialize_config()};
+	let iconfig = config_to_internal(config);
+	
+	alt load_template(iconfig, "blah.html")
+	{
+		result::ok(v)
+		{
+			io::stderr().write_line("Expected error but found: " + v);
+			assert false;
+		}
+		result::err(s)
+		{
+			assert str::contains(s, "mismatched curly braces");
+		}
+	}
 }
