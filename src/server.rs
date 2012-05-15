@@ -716,13 +716,13 @@ fn err_loader(path: str) -> result::result<str, str>
 #[cfg(test)]
 fn make_request(url: str, mime_type: str) -> http_request
 {
-	let headers = std::map::hash_from_strs([
-		("Host", "localhost:8080"),
-		("User-Agent", "Mozilla/5.0"),
-		("Accept", mime_type),
-		("Accept-Language", "en-us,en"),
-		("Accept-Encoding", "gzip, deflate"),
-		("Connection", "keep-alive")]);
+	let headers = std::map::hash_from_strs([		// http_parser lower cases header names so we do too
+		("host", "localhost:8080"),
+		("user-agent", "Mozilla/5.0"),
+		("accept", mime_type),
+		("accept-Language", "en-us,en"),
+		("accept-encoding", "gzip, deflate"),
+		("connection", "keep-alive")]);
 	{method: "GET", major_version: 1, minor_version: 1, url: url, headers: headers, body: ""}
 }
 
