@@ -19,7 +19,7 @@ check: bin/test-server
 	export RUST_LOG=rwebserve=1,rparse=1 && ./bin/test-server
 
 check1: bin/test-server
-	export RUST_LOG=rwebserve=3 && ./bin/test-server test_x
+	export RUST_LOG=rwebserve=3 && ./bin/test-server test_header_values
 
 # Better to use /usr/local/lib but linking it in with -L /usr/local/lib fails because
 # there is a libccore there and in the nested rustc directory.

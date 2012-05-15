@@ -24,6 +24,8 @@ type http_request = {
 // double quotes can be used with header values that use separators
 fn request_parser() -> parser<http_request>
 {
+	let space1 = literal(" ");
+	let tab1 = literal("\t");
 	let space = literal(" ").repeat0();
 	let dot = literal(".");
 	let crnl = literal("\r\n").tag("Expected CRNL");
@@ -38,15 +40,19 @@ fn request_parser() -> parser<http_request>
 	// get_method := 'GET ' url space 'HTTP/' version crnl
 	let get_method = sequence6(literal("GET "), url, space, literal("HTTP/"), version, crnl)
 		{|_a1, url, _a3, _a4, version, _a6| result::ok((url, version))};
+		
+	// value := [^\r\n]+
+	// continuation := crnl [ \t] value
+	let value = match1({|c| c != '\r' && c != '\n'}, "Expected a header value");
+	let continuation = sequence3(crnl, space1.or(tab1), value)
+		{|_a1, _a2, v| result::ok(" " + str::trim(v))};
 	
 	// name := [^:]+
-	// value := [^\r\n]+
-	// header := name ': ' value crnl
+	// header := name ': ' value continuation* crnl
 	// headers := header*
 	let name = match1({|c| c != ':'}, "Expected a header name");
-	let value = match1({|c| c != '\r' && c != '\n'}, "Expected a header value");
-	let header = sequence4(name, literal(":"), value, crnl)
-		{|n, _a2, v, _a4| result::ok((str::to_lower(n), str::trim(v)))};	// 4.2 says that header names are case-insensitive so we lower case them
+	let header = sequence5(name, literal(":"), value, continuation.repeat0(), crnl)
+		{|n, _a2, v, cnt, _a5| result::ok((str::to_lower(n), str::trim(v) + str::connect(cnt, "")))};	// 4.2 says that header names are case-insensitive so we lower case them
 	let headers = header.repeat0();
 	
 	// request := get_method headers crnl
@@ -166,12 +172,13 @@ fn test_header_values()
 {
 	let p = make_parser();
 	
-	alt p("GET / HTTP/1.1\r\nHost:   \t xxx\r\nBlah:   \t bbb \t\r\n\r\n")
+	alt p("GET / HTTP/1.1\r\nHost:   \t xxx\r\nBlah:   \t bbb \t\r\nMulti: line1\r\n  \tline2\r\n  line3\r\n\r\n")
 	{
 		result::ok(value)
 		{
 			assert equal(value.headers.get("host"), "xxx");
 			assert equal(value.headers.get("blah"), "bbb");
+			assert equal(value.headers.get("multi"), "line1 line2 line3");
 		}
 		result::err(mesg)
 		{

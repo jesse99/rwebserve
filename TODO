@@ -3,8 +3,6 @@ RESTful Web Services
 RESTful Web Services Cookbook
 
 * Work on http support:
-	- lower case request header names
-	- header lines can be multiline if next line starts with a space or tab
 	- 4.3 has rules for when to include a body
 	- 5.11 has methods
 	- request url can be *
