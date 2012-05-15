@@ -2,8 +2,22 @@ REST in Practice
 RESTful Web Services
 RESTful Web Services Cookbook
 
+* Work on http support:
+	- lower case request header names
+	- header lines can be multiline if next line starts with a space or tab
+	- 4.3 has rules for when to include a body
+	- 5.11 has methods
+	- request url can be *
+	- urls can be encoded
+	- support custom methods
+* Do modules within a lib have access to un-exported items within other modules?
+	- if so file a bug suggesting clarification
+	- if not file a bug
+* Look at stuff on ipod.
 * Add support for uri template matching:
 	- change home so that it links to /hello/joe%20bob
+	- if template ends with a slash uri doesn't have to
+	- handle *trailing syntax
 	- test a wacky method
 * Make sure gnos still works (especially css files):
 	- should error out with missing not-supported.html file
@@ -23,6 +37,7 @@ RESTful Web Services Cookbook
 /Users/jessejones/Documents/Developer/rust.rtf
 /Users/jessejones/Documents/Developer/web.rtf
 http://www.w3schools.com/html5/html5_reference.asp
+http://reference.sitepoint.com/html/img
 http://htmldog.com/reference/htmltags/
 
 

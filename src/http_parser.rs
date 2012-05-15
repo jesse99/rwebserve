@@ -18,7 +18,10 @@ type http_request = {
 	headers: header_map,
 	body: str};
 
-// TODO: currently we only support GET methods
+// TODO: 
+// currently we only support GET methods
+// Server, User-Agent, and Via values can have comments
+// double quotes can be used with header values that use separators
 fn request_parser() -> parser<http_request>
 {
 	let space = literal(" ").repeat0();
@@ -42,8 +45,8 @@ fn request_parser() -> parser<http_request>
 	// headers := header*
 	let name = match1({|c| c != ':'}, "Expected a header name");
 	let value = match1({|c| c != '\r' && c != '\n'}, "Expected a header value");
-	let header = sequence4(name, literal(": "), value, crnl)
-		{|n, _a2, v, _a4| result::ok((n, v))};
+	let header = sequence4(name, literal(":"), value, crnl)
+		{|n, _a2, v, _a4| result::ok((str::to_lower(n), str::trim(v)))};	// 4.2 says that header names are case-insensitive so we lower case them
 	let headers = header.repeat0();
 	
 	// request := get_method headers crnl
@@ -124,12 +127,12 @@ fn test_get_method2()
 			assert equal(value.headers.size(), 6u);
 			assert equal(str::len(value.body), 0u);
 			
-			assert equal(value.headers.get("Host"), "localhost:8080");
-			assert equal(value.headers.get("User-Agent"), "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:11.0) Gecko/20100101 Firefox/11.0");
-			assert equal(value.headers.get("Accept"), "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-			assert equal(value.headers.get("Accept-Language"), "en-us,en;q=0.5");
-			assert equal(value.headers.get("Accept-Encoding"), "gzip, deflate");
-			assert equal(value.headers.get("Connection"), "keep-alive");
+			assert equal(value.headers.get("host"), "localhost:8080");
+			assert equal(value.headers.get("user-agent"), "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:11.0) Gecko/20100101 Firefox/11.0");
+			assert equal(value.headers.get("accept"), "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+			assert equal(value.headers.get("accept-language"), "en-us,en;q=0.5");
+			assert equal(value.headers.get("accept-encoding"), "gzip, deflate");
+			assert equal(value.headers.get("connection"), "keep-alive");
 		}
 		result::err(mesg)
 		{
@@ -154,6 +157,26 @@ fn test_unknown_method()
 		result::err(mesg)
 		{
 			assert equal(mesg, "Expected 'HTTP/' on line 1 col 8");
+		}
+	}
+}
+
+#[test]
+fn test_header_values()
+{
+	let p = make_parser();
+	
+	alt p("GET / HTTP/1.1\r\nHost:   \t xxx\r\nBlah:   \t bbb \t\r\n\r\n")
+	{
+		result::ok(value)
+		{
+			assert equal(value.headers.get("host"), "xxx");
+			assert equal(value.headers.get("blah"), "bbb");
+		}
+		result::err(mesg)
+		{
+			io::stderr().write_line(mesg);
+			assert false;
 		}
 	}
 }

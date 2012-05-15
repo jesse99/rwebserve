@@ -453,11 +453,12 @@ fn process_template(config: internal_config, response: response, request: reques
 		{
 			result::ok(v)
 			{
+				// We found a legit template file.
 				(response, v)
 			}
 			result::err(mesg)
 			{
-				// We hard-code the body to ensure that we can always return something.
+				// We failed to load the template so use the hard-coded config.read_error body.
 				let context = std::map::str_hash();
 				context.insert("request-url", mustache::str(request.url));
 				let body = mustache::render_str(config.read_error, context);
@@ -472,6 +473,8 @@ fn process_template(config: internal_config, response: response, request: reques
 	
 	if !str::starts_with(response.status, "403") && response.context.size() > 0u
 	{
+		// If we were able to load a template, and we have context, then use the
+		// context to expand the template.
 		let base_dir = path::dirname(response.template);
 		let base_url = #fmt["http://%s:%?/%s/", config.host, config.port, base_dir];
 		response.context.insert("base-url", mustache::str(base_url));
@@ -544,7 +547,7 @@ fn process_request(config: internal_config, request: http_request) -> (str, str)
 	
 	let version = #fmt["%d.%d", request.major_version, request.minor_version];
 	let request = {version: version, method: "GET", url: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
-	let types = if request.headers.contains_key("Accept") {str::split_char(request.headers.get("Accept"), ',')} else {["text/html"]};
+	let types = if request.headers.contains_key("accept") {str::split_char(request.headers.get("accept"), ',')} else {["text/html"]};
 	let (response, body) = get_body(config, request, types);
 	
 	let mut headers = "";
