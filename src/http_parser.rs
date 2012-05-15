@@ -11,7 +11,7 @@ export header_map, http_request, make_parser;
 type header_map = map::hashmap<str, str>;
 
 type http_request = {
-	method: str,
+	method: str,					// per 5.1.1 these are case sensitive
 	major_version: int,
 	minor_version: int,
 	url: str,
@@ -19,14 +19,13 @@ type http_request = {
 	body: str};
 
 // TODO: 
-// currently we only support GET methods
 // Server, User-Agent, and Via values can have comments
 // double quotes can be used with header values that use separators
 fn request_parser() -> parser<http_request>
 {
 	let space1 = literal(" ");
 	let tab1 = literal("\t");
-	let space = literal(" ").repeat0();
+	let lws = (space1.or(tab1)).repeat0();
 	let dot = literal(".");
 	let crnl = literal("\r\n").tag("Expected CRNL");
 	
@@ -37,9 +36,9 @@ fn request_parser() -> parser<http_request>
 	let version = sequence3(integer(), dot, integer())
 		{|major, _a2, minor| result::ok((major, minor))};
 		
-	// get_method := 'GET ' url space 'HTTP/' version crnl
-	let get_method = sequence6(literal("GET "), url, space, literal("HTTP/"), version, crnl)
-		{|_a1, url, _a3, _a4, version, _a6| result::ok((url, version))};
+	// method := identifier lws url lws 'HTTP/' version crnl
+	let method = sequence7(identifier(), lws, url, lws, literal("HTTP/"), version, crnl)
+		{|name, _a2, url, _a4, _a5, version, _a7| result::ok((name, url, version))};
 		
 	// value := [^\r\n]+
 	// continuation := crnl [ \t] value
@@ -55,17 +54,20 @@ fn request_parser() -> parser<http_request>
 		{|n, _a2, v, cnt, _a5| result::ok((str::to_lower(n), str::trim(v) + str::connect(cnt, "")))};	// 4.2 says that header names are case-insensitive so we lower case them
 	let headers = header.repeat0();
 	
-	// request := get_method headers crnl
-	let request = sequence3(get_method, headers, crnl)
-		{|a1, h, _a2|
-			let (u, (v1, v2)) = a1;
+	// body := .*
+	let body = scan0({|chars, i| if chars[i] != '\x00' {1u} else {0u}});		// only some requests are supposed to have bodies but 4.3 says that servers should always be prepared to read a body
+	
+	// request := method headers crnl body
+	let request = sequence4(method, headers, crnl, body)
+		{|a1, h, _a2, b|
+			let (n, u, (v1, v2)) = a1;
 			let entries = std::map::str_hash::<str>();
 			vec::iter(h)
 			{|entry|
 				let (n, v) = entry;
 				entries.insert(n, v);
 			};
-			result::ok({method: "GET", major_version: v1, minor_version: v2, url: u, headers: entries, body: ""})};
+			result::ok({method: n, major_version: v1, minor_version: v2, url: u, headers: entries, body: b})};
 	
 	ret request;
 }
@@ -179,6 +181,46 @@ fn test_header_values()
 			assert equal(value.headers.get("host"), "xxx");
 			assert equal(value.headers.get("blah"), "bbb");
 			assert equal(value.headers.get("multi"), "line1 line2 line3");
+		}
+		result::err(mesg)
+		{
+			io::stderr().write_line(mesg);
+			assert false;
+		}
+	}
+}
+
+#[test]
+fn test_body()
+{
+	let p = make_parser();
+	
+	alt p("GET / HTTP/1.1\r\nHost: xxx\r\n\r\nsome text\nand more text")
+	{
+		result::ok(value)
+		{
+			assert equal(value.method, "GET");
+			assert equal(value.headers.get("host"), "xxx");
+			assert equal(value.body, "some text\nand more text");
+		}
+		result::err(mesg)
+		{
+			io::stderr().write_line(mesg);
+			assert false;
+		}
+	}
+}
+
+#[test]
+fn test_extension_method()
+{
+	let p = make_parser();
+	
+	alt p("Explode \t / HTTP/1.1\r\nHost: xxx\r\n\r\nsome text\nand more text")
+	{
+		result::ok(value)
+		{
+			assert equal(value.method, "Explode");
 		}
 		result::err(mesg)
 		{

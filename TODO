@@ -2,8 +2,16 @@ REST in Practice
 RESTful Web Services
 RESTful Web Services Cookbook
 
+Method         = "OPTIONS"
+               | "GET"
+               | "HEAD"
+               | "POST"
+               | "PUT"
+               | "DELETE"
+               | "TRACE"
+               | "CONNECT"
+
 * Work on http support:
-	- 4.3 has rules for when to include a body
 	- 5.11 has methods
 	- request url can be *
 	- urls can be encoded
