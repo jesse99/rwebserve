@@ -47,7 +47,7 @@ type config = {
 * method: \"GET\", \"PUSH\", \"POST\", etc.
 * request_url: path component of the URL.
 * matches: contains entries from request_url matching a routes URI template.
-* headers: headers from the http request.
+* headers: headers from the http request. Note that the names are lower cased.
 * body: body of the http request."]
 type request = {
 	version: str,

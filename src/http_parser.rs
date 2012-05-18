@@ -17,6 +17,60 @@ type http_request = {
 	url: str,
 	headers: header_map,
 	body: str};
+	
+fn is_hex(octet: u8) -> bool
+{
+	let ch = octet as char;
+	ret (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') || (ch >= '0' && ch <= '9');
+}
+
+fn to_int(octet: u8) -> uint
+{
+	let ch = octet as char;
+	if ch >= 'a' && ch <= 'f'
+	{
+		ret (ch - 'a') as uint + 10u;
+	}
+	else if ch >= 'A' && ch <= 'F'
+	{
+		ret (ch - 'A') as uint + 10u;
+	}
+	else
+	{
+		ret (ch - '0') as uint;
+	}
+}
+
+fn decode(url: str) -> str
+{
+	let mut result = "";
+	let mut i = 0u;
+	str::reserve(result, str::len(url));
+	
+	while i < str::len(url)
+	{
+		if i+1u < str::len(url) && url[i] == '%' as u8 && is_hex(url[i+1u])
+		{
+			i += 1u;
+			let mut code_point = 0u;
+			
+			while i < str::len(url) && is_hex(url[i])
+			{
+				code_point = (code_point << 4) | to_int(url[i]);
+				i += 1u;
+			}
+			
+			str::push_char(result, code_point as char);
+		}
+		else
+		{
+			str::push_char(result, url[i] as char);
+			i += 1u;
+		}
+	}
+	
+	ret result;
+}
 
 // TODO: 
 // Server, User-Agent, and Via values can have comments
@@ -67,7 +121,7 @@ fn request_parser() -> parser<http_request>
 				let (n, v) = entry;
 				entries.insert(n, v);
 			};
-			result::ok({method: n, major_version: v1, minor_version: v2, url: u, headers: entries, body: b})};
+			result::ok({method: n, major_version: v1, minor_version: v2, url: decode(u), headers: entries, body: b})};
 	
 	ret request;
 }
@@ -221,6 +275,25 @@ fn test_extension_method()
 		result::ok(value)
 		{
 			assert equal(value.method, "Explode");
+		}
+		result::err(mesg)
+		{
+			io::stderr().write_line(mesg);
+			assert false;
+		}
+	}
+}
+
+#[test]
+fn test_encoded_url()
+{
+	let p = make_parser();
+	
+	alt p("GET /path%20with%20spaces HTTP/1.1\r\n\r\n")
+	{
+		result::ok(value)
+		{
+			assert equal(value.url, "/path with spaces");
 		}
 		result::err(mesg)
 		{
