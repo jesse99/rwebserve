@@ -12,4 +12,5 @@ use socket (name = "socket", vers = "0.1");
 
 mod http_parser;
 mod server;
+mod uri_template;
 

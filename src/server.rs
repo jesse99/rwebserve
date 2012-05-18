@@ -5,6 +5,7 @@ import io::writer_util;
 import socket;
 import std::map::hashmap; 
 import http_parser::*;
+import uri_template;
 
 export request, response, response_handler, config, initialize_config, start;
 
@@ -20,7 +21,7 @@ export request, response, response_handler, config, initialize_config, start;
 * static: used to handle URIs that don't match routes, but are found beneath resources_root.
 * missing: used to handle URIs that don't match routes, and are not found beneath resources_root.
 * static_types: maps file extensions (including the period) to mime types.
-* read_error: html used when a file fails to load. Must include {{request-url}} template.
+* read_error: html used when a file fails to load. Must include {{request-path}} template.
 * load_rsrc: maps a path rooted at resources_root to a resource body.
 * valid_rsrc: returns true if a path rooted at resources_root points to a file.
 * settings: arbitrary key/value pairs passed into view handlers. If debug is \"true\" rwebserve debugging code will be enabled.
@@ -45,14 +46,14 @@ type config = {
 
 * version: HTTP version.
 * method: \"GET\", \"PUSH\", \"POST\", etc.
-* request_url: path component of the URL.
-* matches: contains entries from request_url matching a routes URI template.
+* path: path component of the URL.
+* matches: contains entries from request_path matching a routes URI template.
 * headers: headers from the http request. Note that the names are lower cased.
 * body: body of the http request."]
 type request = {
 	version: str,
 	method: str,
-	url: str,
+	path: str,
 	matches: hashmap<str, str>,
 	headers: hashmap<str, str>,
 	body: str};
@@ -76,7 +77,7 @@ On entry reponse.status will typically be set to \"200 OK\". response.headers wi
 * Content-Length: 0 (if non-zero rwebserve will not compute the body length)
 * Content-Type:  text/html; charset=UTF-8
 Context will be initialized with:
-* request-url: the url within the client request message (e.g. '/home').
+* request-path: the path component of the url within the client request message (e.g. '/home').
 * status-code: the code that will be included in the response message (e.g. '200' or '404').
 * status-mesg: the code that will be included in the response message (e.g. 'OK' or 'Not Found').
 * request-version: HTTP version of the request message (e.g. '1.1').
@@ -88,7 +89,7 @@ On exit the response will have:
 * template: should be set to a path relative to resources_root.
 * context: new entries will often be added. If template is not actually a template file empty the context.
 
-After the function returns a base-url entry is added to the response.context with the url to the directory containing the template file."]
+After the function returns a base-path entry is added to the response.context with the url to the directory containing the template file."]
 type response_handler = fn~ (hashmap<str, str>, request, response) -> response;
 
 #[doc = "Maps a path rooted at resources_root to a resource body."]
@@ -147,7 +148,7 @@ fn initialize_config() -> config
 
 <title>Error 403 (Forbidden)!</title>
 
-<p>Could not read URL {{request-url}}.</p>",
+<p>Could not read URL {{request-path}}.</p>",
 	load_rsrc: io::read_whole_file_str,
 	valid_rsrc: os::path_exists,
 	settings: []}
@@ -172,6 +173,8 @@ fn start(config: config)
 // ---- Internal Items --------------------------------------------------------
 const max_request_len:uint = 2048u;		// TODO: the standard says that there is no upper bound on these…
 
+type route = {template: [uri_template::component], mime_type: str, route: str};
+
 // Task specific version of config. Should be identical to config (except that it uses
 // hashmaps instead of arrays of tuples).
 type internal_config = {
@@ -179,7 +182,7 @@ type internal_config = {
 	port: u16,
 	server_info: str,
 	resources_root: str,
-	routes_table: hashmap<str, str>,
+	route_list: [route],
 	views_table: hashmap<str, response_handler>,
 	static: response_handler,
 	missing: response_handler,
@@ -192,7 +195,7 @@ type internal_config = {
 // Default config.static view handler.
 fn static_view(_settings: hashmap<str, str>, _request: request, response: response) -> response
 {
-	let path = mustache::render_str("{{request-url}}", response.context);
+	let path = mustache::render_str("{{request-path}}", response.context);
 	{template: path, context: std::map::str_hash() with response}
 }
 
@@ -252,8 +255,9 @@ fn validate_config(config: internal_config) -> str
 	
 	let mut missing_routes = [];
 	let mut routes = [];
-	for config.routes_table.each_value()
-	{|route|
+	for config.route_list.each()
+	{|entry|
+		let route = entry.route;
 		if !config.views_table.contains_key(route)
 		{
 			vec::push(missing_routes, route);
@@ -289,59 +293,55 @@ fn validate_config(config: internal_config) -> str
 
 fn get_body(config: internal_config, request: request, types: [str]) -> (response, str)
 {
-	if request.url == "/shutdown"		// TODO: enable this via debug cfg (or maybe via a command line option)
+	if request.path == "/shutdown"		// TODO: enable this via debug cfg (or maybe via a command line option)
 	{
 		#info["received shutdown request"];
 		libc::exit(0_i32)
 	}
 	else
 	{
-		let (status_code, status_mesg, mime_type, handler) = find_handler(config, request.url, types, request.version);
+		let (status_code, status_mesg, mime_type, handler, matches) = find_handler(config, request.path, types, request.version);
 		
 		let response = make_initial_response(config, status_code, status_mesg, mime_type, request);
-		let response = handler(config.settings, request, response);
+		let response = handler(config.settings, {matches: matches with request}, response);
 		assert str::is_not_empty(response.template);
 		
 		process_template(config, response, request)
 	}
 }
 
-fn find_handler(config: internal_config, request_url: str, types: [str], version: str) -> (str, str, str, response_handler)
+fn find_handler(config: internal_config, request_path: str, types: [str], version: str) -> (str, str, str, response_handler, hashmap<str, str>)
 {
 	let mut handler = option::none;
 	let mut status_code = "200";
 	let mut status_mesg = "OK";
 	let mut result_type = "text/html; charset=UTF-8";
+	let mut matches = std::map::str_hash();
 	
 	// According to section 3.1 servers are supposed to accept new minor version editions.
 	if !str::starts_with(version, "1.")
 	{
 		status_code = "505";
 		status_mesg = "HTTP Version Not Supported";
-		let (_, _, _, h) = find_handler(config, "not-supported.html", ["types/html"], "1.1");
+		let (_, _, _, h, _) = find_handler(config, "not-supported.html", ["types/html"], "1.1");
 		handler = option::some(h);
 	}
 	
-	// Try to find (an implicit) text/html handler.
-	if option::is_none(handler) && vec::contains(types, "text/html")
-	{
-		handler = option::chain(config.routes_table.find(request_url))
-			{|route| option::some(config.views_table.get(route))};
-	}
-	
-	// Try to find a handler using an explicit mime type.
+	// Find the first matching route.
 	if option::is_none(handler)
 	{
-		for vec::each(types)
-		{|mime_type|
-			let candidate = #fmt["%s<%s>", request_url, mime_type];
-			
-			let route = config.routes_table.find(candidate);
-			if option::is_some(route)
+		for vec::each(config.route_list)
+		{|entry|
+			if vec::contains(types, entry.mime_type)
 			{
-				handler = option::some(config.views_table.get(option::get(route)));
-				result_type = mime_type + "; charset=UTF-8";
-				break;
+				let m = uri_template::match(request_path, entry.template);
+				if m.size() > 0u
+				{
+					handler = option::some(config.views_table.get(entry.route));
+					result_type = entry.mime_type + "; charset=UTF-8";
+					matches = m;
+					break;
+				}
 			}
 		}
 	}
@@ -349,12 +349,12 @@ fn find_handler(config: internal_config, request_url: str, types: [str], version
 	// See if the url matches a file under the resource root (i.e. the url can't have too many .. components).
 	if option::is_none(handler)
 	{
-		let path = path::normalize(path::connect(config.resources_root, request_url));
+		let path = path::normalize(path::connect(config.resources_root, request_path));
 		if str::starts_with(path, config.resources_root)
 		{
 			if config.valid_rsrc(path)
 			{
-				let mime_type = path_to_type(config, request_url);
+				let mime_type = path_to_type(config, request_path);
 				if vec::contains(types, mime_type)
 				{
 					result_type = mime_type + "; charset=UTF-8";
@@ -366,7 +366,7 @@ fn find_handler(config: internal_config, request_url: str, types: [str], version
 		{
 			status_code = "403";			// don't allow access to files not under resources_root
 			status_mesg = "Forbidden";
-			let (_, _, _, h) = find_handler(config, "forbidden.html", ["types/html"], version);
+			let (_, _, _, h, _) = find_handler(config, "forbidden.html", ["types/html"], version);
 			handler = option::some(h);
 		}
 	}
@@ -379,7 +379,7 @@ fn find_handler(config: internal_config, request_url: str, types: [str], version
 		handler = option::some(config.missing);
 	}
 	
-	ret (status_code, status_mesg, result_type, option::get(handler));
+	ret (status_code, status_mesg, result_type, option::get(handler), matches);
 }
 
 fn make_initial_response(config: internal_config, status_code: str, status_mesg: str, mime_type: str, request: request) -> response
@@ -390,7 +390,7 @@ fn make_initial_response(config: internal_config, status_code: str, status_mesg:
 		("Content-Type", mime_type)]);
 	
 	let context = std::map::str_hash();
-	context.insert("request-url", mustache::str(request.url));
+	context.insert("request-path", mustache::str(request.path));
 	context.insert("status-code", mustache::str(status_code));
 	context.insert("status-mesg", mustache::str(status_mesg));
 	context.insert("request-version", mustache::str(request.version));
@@ -460,7 +460,7 @@ fn process_template(config: internal_config, response: response, request: reques
 			{
 				// We failed to load the template so use the hard-coded config.read_error body.
 				let context = std::map::str_hash();
-				context.insert("request-url", mustache::str(request.url));
+				context.insert("request-path", mustache::str(request.path));
 				let body = mustache::render_str(config.read_error, context);
 				
 				if config.server_info != "unit test"
@@ -477,7 +477,7 @@ fn process_template(config: internal_config, response: response, request: reques
 		// context to expand the template.
 		let base_dir = path::dirname(response.template);
 		let base_url = #fmt["http://%s:%?/%s/", config.host, config.port, base_dir];
-		response.context.insert("base-url", mustache::str(base_url));
+		response.context.insert("base-path", mustache::str(base_url));
 		
 		(response, mustache::render_str(body, response.context))
 	}
@@ -546,7 +546,7 @@ fn process_request(config: internal_config, request: http_request) -> (str, str)
 	#info["Servicing GET for %s", request.url];
 	
 	let version = #fmt["%d.%d", request.major_version, request.minor_version];
-	let request = {version: version, method: "GET", url: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
+	let request = {version: version, method: "GET", path: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
 	let types = if request.headers.contains_key("accept") {str::split_char(request.headers.get("accept"), ',')} else {["text/html"]};
 	let (response, body) = get_body(config, request, types);
 	
@@ -580,13 +580,33 @@ fn service_request(config: internal_config, sock: @socket::socket_handle, reques
 	str::as_buf(trailer)  	{|buffer| socket::send_buf(sock, buffer, str::len(trailer))};
 }
 
+fn to_route(input: (str, str)) -> route
+{
+	let template_str = tuple::first(input);
+	let route = tuple::second(input);
+	
+	let i = str::find_char(template_str, '<');
+	let (template, mime_type) = if option::is_some(i)
+		{
+			let j = str::find_char_from(template_str, '>', option::get(i)+1u);
+			assert option::is_some(j);
+			(str::slice(template_str, 0u, option::get(i)), str::slice(template_str, option::get(i)+1u, option::get(j)))
+		}
+		else
+		{
+			(template_str, "text/html")
+		};
+	
+	ret {template: uri_template::compile(template), mime_type: mime_type, route: route};
+}
+
 fn config_to_internal(config: config) -> internal_config
 {
 	{	host: config.host,
 		port: config.port,
 		server_info: config.server_info,
 		resources_root: config.resources_root,
-		routes_table: std::map::hash_from_strs(config.routes),
+		route_list: vec::map(config.routes, to_route),
 		views_table: std::map::hash_from_strs(config.views),
 		static: config.static,
 		missing: config.missing,

@@ -2,12 +2,12 @@ REST in Practice
 RESTful Web Services
 RESTful Web Services Cookbook
 
-* Work on http support:
-	- urls can be encoded
-		% followed by 2 hex digits
-* Do modules within a lib have access to un-exported items within other modules?
-	- if so file a bug suggesting clarification
-	- if not file a bug
+
+* Make sure gnos still works (especially css files):
+	- should error out with missing not-supported.html file
+	- set debug
+* Need a way for users to generate URLs:
+	- also need to encode them if they have bad chars
 * Work on http support:
 	- connection close means the connection should close, 8.1.2.1
 	- timeout connections
@@ -19,16 +19,7 @@ RESTful Web Services Cookbook
 	- date header is required
 	- should headers be typed?
 	- 14.1 has headers
-* Add support for uri template matching:
-	- change home so that it links to /hello/joe%20bob
-	- if template ends with a slash uri doesn't have to
-	- handle *trailing syntax
-	- test a wacky method
-* Make sure gnos still works (especially css files):
-	- should error out with missing not-supported.html file
-	- set debug
 * Add default css handler.
-* Add support for other http methods besides GET.
 * Tween support could be cool.
 * Make sure examples are well commented.
 * Look at some python or haskell web servers.

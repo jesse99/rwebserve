@@ -83,9 +83,9 @@ fn home_view(_settings: hashmap<str, str>, options: options, _request: server::r
 	{template: "home.html" with response}
 }
 
-fn greeting_view(_settings: hashmap<str, str>, _request: server::request, response: server::response) -> server::response
+fn greeting_view(_settings: hashmap<str, str>, request: server::request, response: server::response) -> server::response
 {
-	response.context.insert("user-name", mustache::str("Joe Bob"));
+	response.context.insert("user-name", mustache::str(request.matches.get("name")));
 	{template: "hello.html" with response}
 }
 
@@ -105,7 +105,7 @@ fn main(args: [str])
 		port: 8088_u16,
 		server_info: "sample rrest server " + get_version(),
 		resources_root: options.root,
-		routes: [("/", "home"), ("/hello", "greeting")],
+		routes: [("/", "home"), ("/hello/{name}", "greeting")],
 		views: [("home",  home), ("greeting", greeting_view)],
 		settings: [("debug",  "true")]
 		with server::initialize_config()};
