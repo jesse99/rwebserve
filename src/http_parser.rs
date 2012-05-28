@@ -15,8 +15,8 @@ type http_request = {
 	major_version: int,
 	minor_version: int,
 	url: str,
-	headers: header_map,
-	body: str};
+	headers: header_map,		// these are not case sensitive so we lower case them
+	body: str};					// set elsewhere
 	
 fn is_hex(octet: u8) -> bool
 {
@@ -108,12 +108,9 @@ fn request_parser() -> parser<http_request>
 		{|n, _a2, v, cnt, _a5| result::ok((str::to_lower(n), str::trim(v) + str::connect(cnt, "")))};	// 4.2 says that header names are case-insensitive so we lower case them
 	let headers = header.repeat0();
 	
-	// body := .*
-	let body = scan0({|chars, i| if chars[i] != '\x00' {1u} else {0u}});		// only some requests are supposed to have bodies but 4.3 says that servers should always be prepared to read a body
-	
-	// request := method headers crnl body
-	let request = sequence4(method, headers, crnl, body)
-		{|a1, h, _a2, b|
+	// request := method headers crnl
+	let request = sequence3(method, headers, crnl)
+		{|a1, h, _a2|
 			let (n, u, (v1, v2)) = a1;
 			let entries = std::map::str_hash::<str>();
 			vec::iter(h)
@@ -121,7 +118,7 @@ fn request_parser() -> parser<http_request>
 				let (n, v) = entry;
 				entries.insert(n, v);
 			};
-			result::ok({method: n, major_version: v1, minor_version: v2, url: decode(u), headers: entries, body: b})};
+			result::ok({method: n, major_version: v1, minor_version: v2, url: decode(u), headers: entries, body: ""})};
 	
 	ret request;
 }
@@ -163,7 +160,6 @@ fn test_get_method1()
 			assert equal(value.minor_version, 1);
 			assert equal(value.url, "/");
 			assert equal(value.headers.size(), 0u);
-			assert equal(str::len(value.body), 0u);
 		}
 		result::err(mesg)
 		{
@@ -187,7 +183,6 @@ fn test_get_method2()
 			assert equal(value.minor_version, 1);
 			assert equal(value.url, "/");
 			assert equal(value.headers.size(), 6u);
-			assert equal(str::len(value.body), 0u);
 			
 			assert equal(value.headers.get("host"), "localhost:8080");
 			assert equal(value.headers.get("user-agent"), "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:11.0) Gecko/20100101 Firefox/11.0");
@@ -235,27 +230,6 @@ fn test_header_values()
 			assert equal(value.headers.get("host"), "xxx");
 			assert equal(value.headers.get("blah"), "bbb");
 			assert equal(value.headers.get("multi"), "line1 line2 line3");
-		}
-		result::err(mesg)
-		{
-			io::stderr().write_line(mesg);
-			assert false;
-		}
-	}
-}
-
-#[test]
-fn test_body()
-{
-	let p = make_parser();
-	
-	alt p("GET / HTTP/1.1\r\nHost: xxx\r\n\r\nsome text\nand more text")
-	{
-		result::ok(value)
-		{
-			assert equal(value.method, "GET");
-			assert equal(value.headers.get("host"), "xxx");
-			assert equal(value.body, "some text\nand more text");
 		}
 		result::err(mesg)
 		{

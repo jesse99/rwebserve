@@ -1,3 +1,4 @@
+// http://www.w3.org/Protocols/rfc2616/rfc2616.html
 import option = option::option;
 import result = result::result;
 import io;
@@ -171,8 +172,6 @@ fn start(config: config)
 }
 
 // ---- Internal Items --------------------------------------------------------
-const max_request_len:uint = 2048u;		// TODO: the standard says that there is no upper bound on these…
-
 type route = {template: [uri_template::component], mime_type: str, route: str};
 
 // Task specific version of config. Should be identical to config (except that it uses
@@ -512,29 +511,145 @@ fn path_to_type(config: internal_config, path: str) -> str
 	}
 }
 
-fn recv_request(sock: @socket::socket_handle) -> str unsafe
+fn found_headers(buffer: [u8]) -> bool
 {
-	alt socket::recv(sock, max_request_len)
+	if vec::len(buffer) < 4u
 	{
-		result::ok((buffer, len))
+		false
+	}
+	else
+	{
+		let len = vec::len(buffer);
+		buffer[len-4u] == 0x0Du8 && buffer[len-3u] == 0x0Au8 && buffer[len-2u] == 0x0Du8 && buffer[len-1u] == 0x0Au8
+	}
+}
+
+// TODO: We can't simply do a read for whatever is available because
+// clients can issue multple requests. So we need to read the request
+// byte by byte until we get a double new-line. If this becomes a bottle
+// neck we could do chunked reads, but we'd need to take care to properly
+// handle multi-byte utf-8 characters and the split between headers and
+// the body.
+fn read_headers(sock: @socket::socket_handle) -> str unsafe
+{
+	let mut buffer = [];
+	
+	while !found_headers(buffer) 
+	{
+		alt socket::recv(sock, 1u)			// TODO: need a timeout
 		{
-			if str::is_utf8(buffer)
+			result::ok((buf, len))
 			{
-				let request = str::unsafe::from_buf(vec::unsafe::to_ptr(buffer));
-				#debug["request: %s", request];
-				request
+				vec::push(buffer, buf[0]);
+			}
+			result::err(mesg)
+			{
+				#warn["read_headers failed with error: %s", mesg];
+				ret "";
+			}
+		}
+	}
+	
+	if str::is_utf8(buffer)
+	{
+		let mut headers = str::unsafe::from_buf(vec::unsafe::to_ptr(buffer));
+		str::unsafe::set_len(headers, vec::len(buffer));		// push adds garbage after the end of the actual elements (i.e. the capacity part)
+		#debug["headers: %s", headers];
+		headers
+	}
+	else
+	{
+		#error["Headers were not utf-8"];	// TODO: what does the standard say about encodings? do we need to negotiate? or at least return some error response...
+		""
+	}
+}
+
+fn dump_string(title: str, text: str)
+{
+	io::println(#fmt["%s has %? bytes:", title, str::len(text)]);
+	let mut i = 0u;
+	while i < str::len(text)
+	{
+		// Print the byte offset for the start of the line.
+		io::print(#fmt["%4X: ", i]);
+		
+		// Print the first 8 bytes as hex.
+		let mut k = 0u;
+		while k < 8u && i+k < str::len(text)
+		{
+			io::print(#fmt["%2X ", text[i+k] as uint]);
+			k += 1u;
+		}
+		
+		io::print("  ");
+		
+		// Print the second 8 bytes as hex.
+		k = 0u;
+		while k < 8u && i+8u+k < str::len(text)
+		{
+			io::print(#fmt["%2X ", text[i+8u+k] as uint]);
+			k += 1u;
+		}
+		
+		// Print the printable 16 characters as characters and
+		// the unprintable characters as '.'.
+		io::print("  ");
+		k = 0u;
+		while k < 16u && i < str::len(text)
+		{
+			if text[i] < ' ' as u8 || text[i] > '~' as u8
+			{
+				io::print(".");
 			}
 			else
 			{
-				#error["Payload was not utf-8"];	// TODO: what does the standard say about encodings? do we need to negotiate? or at least return some error response...
-				""
+				io::print(#fmt["%c", text[i] as char]);
+			}
+			k += 1u;
+			i += 1u;
+		}
+		io::println("");
+	}
+}
+
+fn read_body(sock: @socket::socket_handle, content_length: str) -> str unsafe
+{
+	let total_len = option::get(uint::from_str(content_length));
+	
+	let mut buffer = [];
+	vec::reserve(buffer, total_len);
+	
+	while vec::len(buffer) < total_len 
+	{
+		alt socket::recv(sock, total_len - vec::len(buffer))			// TODO: need a timeout
+		{
+			result::ok((buf, len))
+			{
+				let mut i = 0u;
+				while i < len
+				{
+					vec::push(buffer, buf[i]);
+					i += 1u;
+				}
+			}
+			result::err(mesg)
+			{
+				#warn["read_headers failed with error: %s", mesg];
+				ret "";
 			}
 		}
-		result::err(mesg)
-		{
-			#warn["recv failed with error: %s", mesg];
-			""
-		}
+	}
+	
+	if str::is_utf8(buffer)
+	{
+		let body = str::unsafe::from_buf(vec::unsafe::to_ptr(buffer));
+		#debug["body: %s", body];	// note that the log macros truncate long strings 
+		body
+	}
+	else
+	{
+		#error["Body was not utf-8"];	// TODO: what does the standard say about encodings? do we need to negotiate? or at least return some error response...
+		""
 	}
 }
 
@@ -632,18 +747,30 @@ fn handle_client(config: config, fd: libc::c_int)
 	let parse = make_parser();
 	loop
 	{
-		let message = recv_request(sock);
-		if str::is_not_empty(message)
+		let headers = read_headers(sock);
+		if str::is_not_empty(headers)
 		{
-			alt parse(message)
+			alt parse(headers)
 			{
 				result::ok(request)
 				{
-					service_request(iconfig, sock, request);
+					if request.headers.contains_key("content-length")
+					{
+						let body = read_body(sock, request.headers.get("content-length"));
+						if str::is_not_empty(body)
+						{
+							service_request(iconfig, sock, {body: body with request});
+						}
+					}
+					else
+					{
+						service_request(iconfig, sock, request);
+					}
 				}
 				result::err(mesg)
 				{
 					#error["Couldn't parse: %s", mesg];
+					#error["%s", headers];
 				}
 			}
 		}

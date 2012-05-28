@@ -2,12 +2,15 @@ REST in Practice
 RESTful Web Services
 RESTful Web Services Cookbook
 
+/gnos:device.10.101.100.2
 
-* Make sure gnos still works (especially css files):
-	- should error out with missing not-supported.html file
-	- set debug
+
+* Log client ip, method, url
+* Disallow requests where the request path has a component enclosed in parens:
+	- but what about relative URLs? even when they are relative the browser generates an abs path 
 * Need a way for users to generate URLs:
 	- also need to encode them if they have bad chars
+* Need to include a date header. Think that there is a std::time now.
 * Work on http support:
 	- connection close means the connection should close, 8.1.2.1
 	- timeout connections
@@ -16,9 +19,10 @@ RESTful Web Services Cookbook
 	- accept-language
 	- status 300
 	- 13.2.1 says expiration may be in the past
-	- date header is required
 	- should headers be typed?
 	- 14.1 has headers
+* Caching
+	- chapter 6 has good info
 * Add default css handler.
 * Tween support could be cool.
 * Make sure examples are well commented.
