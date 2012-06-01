@@ -17,7 +17,7 @@ export request, response, response_handler, config, initialize_config, start;
 * port is the TCP port that the server listens on.
 * server_info is included in the HTTP response and should include the server name and version.
 * resources_root should be a path to where the files associated with URLs are loaded from.
-* routes: maps URI templates (\"/hello/{name}\") to route names (\"greeting\"). To support non text/html types append the template with \"<some/type>\".
+* routes: maps HTTP methods and URI templates (\"/hello/{name}\") to route names (\"greeting\"). To support non text/html types append the template with \"<some/type>\".
 * views: maps route names to view handler functions.
 * static: used to handle URIs that don't match routes, but are found beneath resources_root.
 * missing: used to handle URIs that don't match routes, and are not found beneath resources_root.
@@ -33,7 +33,7 @@ type config = {
 	port: u16,
 	server_info: str,
 	resources_root: str,
-	routes: [(str, str)],					// better to use hashmap, but afaict there is no way to send a hashmap to a task
+	routes: [(str, str, str)],					// better to use hashmap, but afaict there is no way to send a hashmap to a task
 	views: [(str, response_handler)],
 	static: response_handler,
 	missing: response_handler,
@@ -47,6 +47,7 @@ type config = {
 
 * version: HTTP version.
 * method: \"GET\", \"PUSH\", \"POST\", etc.
+* remote_addr: ip address of the client (or proxy).
 * path: path component of the URL.
 * matches: contains entries from request_path matching a routes URI template.
 * headers: headers from the http request. Note that the names are lower cased.
@@ -54,6 +55,7 @@ type config = {
 type request = {
 	version: str,
 	method: str,
+	remote_addr: str,
 	path: str,
 	matches: hashmap<str, str>,
 	headers: hashmap<str, str>,
@@ -172,7 +174,7 @@ fn start(config: config)
 }
 
 // ---- Internal Items --------------------------------------------------------
-type route = {template: [uri_template::component], mime_type: str, route: str};
+type route = {method: str, template: [uri_template::component], mime_type: str, route: str};
 
 // Task specific version of config. Should be identical to config (except that it uses
 // hashmaps instead of arrays of tuples).
@@ -299,7 +301,7 @@ fn get_body(config: internal_config, request: request, types: [str]) -> (respons
 	}
 	else
 	{
-		let (status_code, status_mesg, mime_type, handler, matches) = find_handler(config, request.path, types, request.version);
+		let (status_code, status_mesg, mime_type, handler, matches) = find_handler(config, request.method, request.path, types, request.version);
 		
 		let response = make_initial_response(config, status_code, status_mesg, mime_type, request);
 		let response = handler(config.settings, {matches: matches with request}, response);
@@ -309,7 +311,7 @@ fn get_body(config: internal_config, request: request, types: [str]) -> (respons
 	}
 }
 
-fn find_handler(config: internal_config, request_path: str, types: [str], version: str) -> (str, str, str, response_handler, hashmap<str, str>)
+fn find_handler(config: internal_config, method: str, request_path: str, types: [str], version: str) -> (str, str, str, response_handler, hashmap<str, str>)
 {
 	let mut handler = option::none;
 	let mut status_code = "200";
@@ -322,7 +324,7 @@ fn find_handler(config: internal_config, request_path: str, types: [str], versio
 	{
 		status_code = "505";
 		status_mesg = "HTTP Version Not Supported";
-		let (_, _, _, h, _) = find_handler(config, "not-supported.html", ["types/html"], "1.1");
+		let (_, _, _, h, _) = find_handler(config, method, "not-supported.html", ["types/html"], "1.1");
 		handler = option::some(h);
 	}
 	
@@ -331,7 +333,7 @@ fn find_handler(config: internal_config, request_path: str, types: [str], versio
 	{
 		for vec::each(config.route_list)
 		{|entry|
-			if vec::contains(types, entry.mime_type)
+			if entry.method == method && vec::contains(types, entry.mime_type)
 			{
 				let m = uri_template::match(request_path, entry.template);
 				if m.size() > 0u
@@ -365,7 +367,7 @@ fn find_handler(config: internal_config, request_path: str, types: [str], versio
 		{
 			status_code = "403";			// don't allow access to files not under resources_root
 			status_mesg = "Forbidden";
-			let (_, _, _, h, _) = find_handler(config, "forbidden.html", ["types/html"], version);
+			let (_, _, _, h, _) = find_handler(config, method, "forbidden.html", ["types/html"], version);
 			handler = option::some(h);
 		}
 	}
@@ -634,7 +636,7 @@ fn read_body(sock: @socket::socket_handle, content_length: str) -> str unsafe
 			}
 			result::err(mesg)
 			{
-				#warn["read_headers failed with error: %s", mesg];
+				#warn["read_body failed with error: %s", mesg];
 				ret "";
 			}
 		}
@@ -656,12 +658,12 @@ fn read_body(sock: @socket::socket_handle, content_length: str) -> str unsafe
 // TODO:
 // should add date header (which must adhere to rfc1123)
 // include last-modified and maybe etag
-fn process_request(config: internal_config, request: http_request) -> (str, str)
+fn process_request(config: internal_config, request: http_request, remote_addr: str) -> (str, str)
 {
 	#info["Servicing GET for %s", request.url];
 	
 	let version = #fmt["%d.%d", request.major_version, request.minor_version];
-	let request = {version: version, method: "GET", path: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
+	let request = {version: version, method: "GET", remote_addr: remote_addr, path: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
 	let types = if request.headers.contains_key("accept") {str::split_char(request.headers.get("accept"), ',')} else {["text/html"]};
 	let (response, body) = get_body(config, request, types);
 	
@@ -686,33 +688,36 @@ fn process_request(config: internal_config, request: http_request) -> (str, str)
 }
 
 // TODO: check connection: keep-alive
-fn service_request(config: internal_config, sock: @socket::socket_handle, request: http_request)
+fn service_request(config: internal_config, sock: @socket::socket_handle, request: http_request, remote_addr: str)
 {
-	let (header, body) = process_request(config, request);
+	let (header, body) = process_request(config, request, remote_addr);
 	let trailer = "r\n\r\n";
 	str::as_buf(header) 	{|buffer| socket::send_buf(sock, buffer, str::len(header))};
 	str::as_buf(body)	{|buffer| socket::send_buf(sock, buffer, str::len(body))};
 	str::as_buf(trailer)  	{|buffer| socket::send_buf(sock, buffer, str::len(trailer))};
 }
 
-fn to_route(input: (str, str)) -> route
+fn to_route(input: (str, str, str)) -> route
 {
-	let template_str = tuple::first(input);
-	let route = tuple::second(input);
-	
-	let i = str::find_char(template_str, '<');
-	let (template, mime_type) = if option::is_some(i)
+	alt input
+	{
+		(method, template_str, route)
 		{
-			let j = str::find_char_from(template_str, '>', option::get(i)+1u);
-			assert option::is_some(j);
-			(str::slice(template_str, 0u, option::get(i)), str::slice(template_str, option::get(i)+1u, option::get(j)))
+			let i = str::find_char(template_str, '<');
+			let (template, mime_type) = if option::is_some(i)
+				{
+					let j = str::find_char_from(template_str, '>', option::get(i)+1u);
+					assert option::is_some(j);
+					(str::slice(template_str, 0u, option::get(i)), str::slice(template_str, option::get(i)+1u, option::get(j)))
+				}
+				else
+				{
+					(template_str, "text/html")
+				};
+			
+			{method: method, template: uri_template::compile(template), mime_type: mime_type, route: route}
 		}
-		else
-		{
-			(template_str, "text/html")
-		};
-	
-	ret {template: uri_template::compile(template), mime_type: mime_type, route: route};
+	}
 }
 
 fn config_to_internal(config: config) -> internal_config
@@ -733,7 +738,7 @@ fn config_to_internal(config: config) -> internal_config
 }
 
 // TODO: probably want to use task::unsupervise
-fn handle_client(config: config, fd: libc::c_int)
+fn handle_client(config: config, fd: libc::c_int, remote_addr: str)
 {
 	let iconfig = config_to_internal(config);
 	let err = validate_config(iconfig);
@@ -759,12 +764,12 @@ fn handle_client(config: config, fd: libc::c_int)
 						let body = read_body(sock, request.headers.get("content-length"));
 						if str::is_not_empty(body)
 						{
-							service_request(iconfig, sock, {body: body with request});
+							service_request(iconfig, sock, {body: body with request}, remote_addr);
 						}
 					}
 					else
 					{
-						service_request(iconfig, sock, request);
+						service_request(iconfig, sock, request, remote_addr);
 					}
 				}
 				result::err(mesg)
@@ -788,9 +793,10 @@ fn attach(config: config, shandle: @socket::socket_handle) -> result<@socket::so
 {
 	#info["server is listening"];
 	result::chain(socket::accept(shandle))
-	{|fd|
-		#info["attached to client"];
-		task::spawn {|| handle_client(config, fd)};
+	{|args|
+		let (fd, remote_addr) = args;
+		#info["attached to client at %s", remote_addr];
+		task::spawn {|| handle_client(config, fd, remote_addr)};
 		result::ok(shandle)
 	};
 	attach(config, shandle)
@@ -804,7 +810,7 @@ fn routes_must_have_views()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("/", "home"), ("/hello", "greeting"), ("/goodbye", "farewell")],
+		routes: [("GET", "/", "home"), ("GET", "/hello", "greeting"), ("GET", "/goodbye", "farewell")],
 		views: [("home",  missing_view)]
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
@@ -819,7 +825,7 @@ fn views_must_have_routes()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("/", "home")],
+		routes: [("GET", "/", "home")],
 		views: [("home",  missing_view), ("greeting",  missing_view), ("goodbye",  missing_view)]
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
@@ -834,7 +840,7 @@ fn root_must_have_required_files()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "/tmp",
-		routes: [("/", "home")],
+		routes: [("GET", "/", "home")],
 		views: [("home",  missing_view)]
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
@@ -880,14 +886,14 @@ fn html_route()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("/foo/bar", "foo")],
+		routes: [("GET", "/foo/bar", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
 	let request = make_request("/foo/bar", "text/html");
-	let (_header, body) = process_request(iconfig, request);
+	let (_header, body) = process_request(iconfig, request, "1.2.3.4");
 	
 	assert body == "server/html/test.html contents";
 }
@@ -899,14 +905,14 @@ fn route_with_bad_type()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("/foo/bar", "foo")],
+		routes: [("GET", "/foo/bar", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
 	let request = make_request("/foo/bar", "text/zzz");
-	let (header, body) = process_request(iconfig, request);
+	let (header, body) = process_request(iconfig, request, "1.2.3.4");
 	
 	assert header.contains("404 Not Found");
 	assert header.contains("Content-Type: text/html");
@@ -920,14 +926,14 @@ fn non_html_route()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("/foo/bar<text/csv>", "foo")],
+		routes: [("GET", "/foo/bar<text/csv>", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
 	let request = make_request("/foo/bar", "text/csv");
-	let (_header, body) = process_request(iconfig, request);
+	let (_header, body) = process_request(iconfig, request, "1.2.3.4");
 	
 	assert body == "server/html/test.html contents";
 }
@@ -939,7 +945,7 @@ fn static_route()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("/foo/bar", "foo")],
+		routes: [("GET", "/foo/bar", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader,
 		valid_rsrc: {|_path| true}
@@ -947,7 +953,7 @@ fn static_route()
 	let iconfig = config_to_internal(config);
 	
 	let request = make_request("/foo/baz.jpg", "text/html,image/jpeg");
-	let (header, body) = process_request(iconfig, request);
+	let (header, body) = process_request(iconfig, request, "1.2.3.4");
 	
 	assert header.contains("Content-Type: image/jpeg");
 	assert body == "server/html/foo/baz.jpg contents";
@@ -960,7 +966,7 @@ fn static_with_bad_type()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("/foo/bar", "foo")],
+		routes: [("GET", "/foo/bar", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader,
 		valid_rsrc: {|_path| true}
@@ -968,7 +974,7 @@ fn static_with_bad_type()
 	let iconfig = config_to_internal(config);
 	
 	let request = make_request("/foo/baz.jpg", "text/zzz");
-	let (header, body) = process_request(iconfig, request);
+	let (header, body) = process_request(iconfig, request, "1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert body == "server/html/not-found.html contents";
@@ -981,7 +987,7 @@ fn bad_url()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("/foo/bar", "foo")],
+		routes: [("GET", "/foo/bar", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader,
 		valid_rsrc: {|_path| false}
@@ -989,7 +995,7 @@ fn bad_url()
 	let iconfig = config_to_internal(config);
 	
 	let request = make_request("/foo/baz.jpg", "text/html,image/jpeg");
-	let (header, body) = process_request(iconfig, request);
+	let (header, body) = process_request(iconfig, request, "1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("404 Not Found");
@@ -1003,7 +1009,7 @@ fn path_outside_root()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("/foo/bar", "foo")],
+		routes: [("GET", "/foo/bar", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader,
 		valid_rsrc: {|_path| true}
@@ -1011,7 +1017,7 @@ fn path_outside_root()
 	let iconfig = config_to_internal(config);
 	
 	let request = make_request("/foo/../../baz.jpg", "text/html,image/jpeg");
-	let (header, body) = process_request(iconfig, request);
+	let (header, body) = process_request(iconfig, request, "1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("403 Forbidden");
@@ -1025,7 +1031,7 @@ fn read_error()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("/foo/baz", "foo")],
+		routes: [("GET", "/foo/baz", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: err_loader,
 		valid_rsrc: {|_path| true}
@@ -1033,7 +1039,7 @@ fn read_error()
 	let iconfig = config_to_internal(config);
 	
 	let request = make_request("/foo/baz.jpg", "text/html,image/jpeg");
-	let (header, body) = process_request(iconfig, request);
+	let (header, body) = process_request(iconfig, request, "1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("403 Forbidden");
@@ -1047,7 +1053,7 @@ fn bad_version()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("/foo/baz", "foo")],
+		routes: [("GET", "/foo/baz", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: null_loader,
 		valid_rsrc: {|_path| true}
@@ -1055,7 +1061,7 @@ fn bad_version()
 	let iconfig = config_to_internal(config);
 	
 	let request = {major_version: 100 with make_request("/foo/baz.jpg", "text/html,image/jpeg")};
-	let (header, body) = process_request(iconfig, request);
+	let (header, body) = process_request(iconfig, request, "1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("505 HTTP Version Not Supported");
@@ -1071,7 +1077,7 @@ fn bad_template()
 		host: "localhost",
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("/foo/baz", "foo")],
+		routes: [("GET", "/foo/baz", "foo")],
 		views: [("foo",  test_view)],
 		load_rsrc: loader,
 		valid_rsrc: {|_path| true},
