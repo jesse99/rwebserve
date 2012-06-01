@@ -105,7 +105,7 @@ fn main(args: [str])
 		port: 8088_u16,
 		server_info: "sample rrest server " + get_version(),
 		resources_root: options.root,
-		routes: [("/", "home"), ("/hello/{name}", "greeting")],
+		routes: [("GET", "/", "home"), ("GET", "/hello/{name}", "greeting")],
 		views: [("home",  home), ("greeting", greeting_view)],
 		settings: [("debug",  "true")]
 		with server::initialize_config()};
