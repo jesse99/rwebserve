@@ -101,7 +101,7 @@ fn main(args: [str])
 	let home: server::response_handler = {|settings, request, response| home_view(settings, options, request, response)};	// need the temporary in order to get a unique fn pointer
 	
 	let config = {
-		host: "localhost",
+		hosts: ["localhost", "10.6.210.132"],
 		port: 8088_u16,
 		server_info: "sample rrest server " + get_version(),
 		resources_root: options.root,
