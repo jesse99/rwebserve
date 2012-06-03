@@ -371,6 +371,7 @@ fn find_handler(config: internal_config, method: str, request_path: str, types: 
 		status_mesg = "HTTP Version Not Supported";
 		let (_, _, _, h, _) = find_handler(config, method, "not-supported.html", ["types/html"], "1.1");
 		handler = option::some(h);
+		#info["responding with %s %s", status_code, status_mesg];
 	}
 	
 	// Find the first matching route.
@@ -378,15 +379,22 @@ fn find_handler(config: internal_config, method: str, request_path: str, types: 
 	{
 		for vec::each(config.route_list)
 		{|entry|
-			if entry.method == method && vec::contains(types, entry.mime_type)
+			if entry.method == method
 			{
 				let m = uri_template::match(request_path, entry.template);
 				if m.size() > 0u
 				{
-					handler = option::some(config.views_table.get(entry.route));
-					result_type = entry.mime_type + "; charset=UTF-8";
-					matches = m;
-					break;
+					if vec::contains(types, entry.mime_type)
+					{
+						handler = option::some(config.views_table.get(entry.route));
+						result_type = entry.mime_type + "; charset=UTF-8";
+						matches = m;
+						break;
+					}
+					else
+					{
+						#info["request matches route but route type is %s not one of: %s", entry.mime_type, str::connect(types, ", ")];
+					}
 				}
 			}
 		}
@@ -414,6 +422,7 @@ fn find_handler(config: internal_config, method: str, request_path: str, types: 
 			status_mesg = "Forbidden";
 			let (_, _, _, h, _) = find_handler(config, method, "forbidden.html", ["types/html"], version);
 			handler = option::some(h);
+			#info["responding with %s %s (path wasn't udner resources_root)", status_code, status_mesg];
 		}
 	}
 	
@@ -423,6 +432,7 @@ fn find_handler(config: internal_config, method: str, request_path: str, types: 
 		status_code = "404";
 		status_mesg = "Not Found";
 		handler = option::some(config.missing);
+		#info["responding with %s %s", status_code, status_mesg];
 	}
 	
 	ret (status_code, status_mesg, result_type, option::get(handler), matches);
@@ -705,10 +715,10 @@ fn read_body(sock: @socket::socket_handle, content_length: str) -> str unsafe
 // include last-modified and maybe etag
 fn process_request(config: internal_config, request: http_request, local_addr: str, remote_addr: str) -> (str, str)
 {
-	#info["Servicing GET for %s", request.url];
+	#info["Servicing %s for %s", request.method, request.url];
 	
 	let version = #fmt["%d.%d", request.major_version, request.minor_version];
-	let request = {version: version, method: "GET", local_addr: local_addr, remote_addr: remote_addr, path: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
+	let request = {version: version, method: request.method, local_addr: local_addr, remote_addr: remote_addr, path: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
 	let types = if request.headers.contains_key("accept") {str::split_char(request.headers.get("accept"), ',')} else {["text/html"]};
 	let (response, body) = get_body(config, request, types);
 	
