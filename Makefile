@@ -31,7 +31,7 @@ install:
 update-libraries:
 	cp /usr/local/lib/rust/libmustache-*-0.1.dylib bin
 	cp /usr/local/lib/rust/libsocket-*-0.1.dylib bin
-	cp /usr/local/lib/rust/librparse-*-0.3.dylib bin
+	cp /usr/local/lib/rust/librparse-*-0.4.dylib bin
 
 # ------------------
 # Binary targets 
@@ -46,7 +46,7 @@ lib:
 	$(RUSTC) --out-dir bin -L bin -O src/rwebserve.rc
 
 bin/test-server: src/rwebserve.rc src/*.rs
-	$(RUSTC) -g -L bin --test -o $@ $<
+	$(RUSTC) -L bin --test -o $@ $<
 
 bin/server: server/src/server.rc server/src/*.rs bin/librwebserve*
-	$(RUSTC) -g -L bin -o $@ $<
+	$(RUSTC) -L bin -o $@ $<

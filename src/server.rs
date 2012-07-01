@@ -29,19 +29,19 @@ export request, response, response_handler, config, initialize_config, start;
 
 initialize_config can be used to initialize some of these fields."]
 type config = {
-	hosts: [str],
+	hosts: [str]/~,
 	port: u16,
 	server_info: str,
 	resources_root: str,
-	routes: [(str, str, str)],					// better to use hashmap, but afaict there is no way to send a hashmap to a task
-	views: [(str, response_handler)],
+	routes: [(str, str, str)]/~,					// better to use hashmap, but afaict there is no way to send a hashmap to a task
+	views: [(str, response_handler)]/~,
 	static: response_handler,
 	missing: response_handler,
-	static_types: [(str, str)],
+	static_types: [(str, str)]/~,
 	read_error: str,
 	load_rsrc: rsrc_loader,
 	valid_rsrc: rsrc_exists,
-	settings: [(str, str)]};
+	settings: [(str, str)]/~};
 	
 #[doc = "Information about incoming http requests. Passed into view functions.
 
@@ -120,12 +120,12 @@ type rsrc_exists = fn~ (str) -> bool;
 fn initialize_config() -> config
 {
 	{
-	hosts: [""],
+	hosts: [""]/~,
 	port: 80_u16,
 	server_info: "",
 	resources_root: "",
-	routes: [],
-	views: [],
+	routes: []/~,
+	views: []/~,
 	static: static_view,
 	missing: missing_view,
 	static_types: [
@@ -152,7 +152,7 @@ fn initialize_config() -> config
 		(".mov", "video/quicktime"),
 		(".mpg", "video/mpeg"),
 		(".mpeg", "video/mpeg"),
-		(".qt", "video/quicktime")],
+		(".qt", "video/quicktime")]/~,
 	read_error: "<!DOCTYPE html>
 <meta charset=utf-8>
 
@@ -161,13 +161,13 @@ fn initialize_config() -> config
 <p>Could not read URL {{request-path}}.</p>",
 	load_rsrc: io::read_whole_file_str,
 	valid_rsrc: os::path_exists,
-	settings: []}
+	settings: []/~}
 }
 
 #[doc = "Startup the server.
 
 Currently this will run until a client does a GET on '/shutdown' in which case exit is called."]
-fn start(config: config)
+fn start(+config: config)
 {
 	let port = comm::port::<uint>();
 	let chan = comm::chan::<uint>(port);
@@ -177,14 +177,15 @@ fn start(config: config)
 	task::spawn {||
 		for vec::each(config.hosts)
 		{|host|
+			let config2 = copy(config);
 			task::spawn
 			{||
-				let r = result::chain(socket::bind_socket(host, config.port))
+				let r = result::chain(socket::bind_socket(host, config2.port))
 				{|shandle|
 					result::chain(socket::listen(shandle, 10i32))
-						{|shandle| attach(config, host, shandle)}
+						{|shandle| attach(copy(config2), host, shandle)}
 				};
-				if result::is_failure(r)
+				if result::is_err(r)
 				{
 					#error["Couldn't start web server at %s: %s", host, result::get_err(r)];
 				}
@@ -203,16 +204,16 @@ fn start(config: config)
 }
 
 // ---- Internal Items --------------------------------------------------------
-type route = {method: str, template: [uri_template::component], mime_type: str, route: str};
+type route = {method: str, template: [uri_template::component]/~, mime_type: str, route: str};
 
 // Task specific version of config. Should be identical to config (except that it uses
 // hashmaps instead of arrays of tuples).
 type internal_config = {
-	hosts: [str],
+	hosts: [str]/~,
 	port: u16,
 	server_info: str,
 	resources_root: str,
-	route_list: [route],
+	route_list: [route]/~,
 	views_table: hashmap<str, response_handler>,
 	static: response_handler,
 	missing: response_handler,
@@ -238,7 +239,7 @@ fn missing_view(_settings: hashmap<str, str>, _request: request, response: respo
 
 fn validate_config(config: internal_config) -> str
 {
-	let mut errors = [];
+	let mut errors = []/~;
 	
 	if vec::is_empty(config.hosts)
 	{
@@ -272,8 +273,8 @@ fn validate_config(config: internal_config) -> str
 		vec::push(errors, "resources_root is not a directory.");
 	}
 	
-	let mut names = [];
-	for vec::each(["forbidden.html", "home.html", "not-found.html", "not-supported.html"])
+	let mut names = []/~;
+	for vec::each(["forbidden.html", "home.html", "not-found.html", "not-supported.html"]/~)
 	{|name|
 		let path = path::connect(config.resources_root, name);
 		if !os::path_exists(path)
@@ -291,8 +292,8 @@ fn validate_config(config: internal_config) -> str
 		vec::push(errors, "read_error is empty.");
 	}
 	
-	let mut missing_routes = [];
-	let mut routes = [];
+	let mut missing_routes = []/~;
+	let mut routes = []/~;
 	for config.route_list.each()
 	{|entry|
 		let route = entry.route;
@@ -310,7 +311,7 @@ fn validate_config(config: internal_config) -> str
 		vec::push(errors, #fmt["No views for the following routes: %s", str::connect(missing_routes, ", ")]);
 	}
 	
-	let mut missing_views = [];
+	let mut missing_views = []/~;
 	for config.views_table.each_key()
 	{|route|
 		if !vec::contains(routes, route)
@@ -329,7 +330,7 @@ fn validate_config(config: internal_config) -> str
 	ret str::connect(errors, " ");
 }
 
-fn get_body(config: internal_config, request: request, types: [str]) -> (response, str)
+fn get_body(+config: internal_config, request: request, types: [str]/~) -> (response, str)
 {
 	if request.path == "/shutdown"		// TODO: enable this via debug cfg (or maybe via a command line option)
 	{
@@ -338,7 +339,7 @@ fn get_body(config: internal_config, request: request, types: [str]) -> (respons
 	}
 	else
 	{
-		let (status_code, status_mesg, mime_type, handler, matches) = find_handler(config, request.method, request.path, types, request.version);
+		let (status_code, status_mesg, mime_type, handler, matches) = find_handler(copy(config), request.method, request.path, types, request.version);
 		
 		let response = make_initial_response(config, status_code, status_mesg, mime_type, request);
 		let response = handler(config.settings, {matches: matches with request}, response);
@@ -356,7 +357,7 @@ fn get_body(config: internal_config, request: request, types: [str]) -> (respons
 	}
 }
 
-fn find_handler(config: internal_config, method: str, request_path: str, types: [str], version: str) -> (str, str, str, response_handler, hashmap<str, str>)
+fn find_handler(+config: internal_config, method: str, request_path: str, types: [str]/~, version: str) -> (str, str, str, response_handler, hashmap<str, str>)
 {
 	let mut handler = option::none;
 	let mut status_code = "200";
@@ -369,7 +370,7 @@ fn find_handler(config: internal_config, method: str, request_path: str, types: 
 	{
 		status_code = "505";
 		status_mesg = "HTTP Version Not Supported";
-		let (_, _, _, h, _) = find_handler(config, method, "not-supported.html", ["types/html"], "1.1");
+		let (_, _, _, h, _) = find_handler(copy(config), method, "not-supported.html", ["types/html"]/~, "1.1");
 		handler = option::some(h);
 		#info["responding with %s %s", status_code, status_mesg];
 	}
@@ -412,7 +413,7 @@ fn find_handler(config: internal_config, method: str, request_path: str, types: 
 				if vec::contains(types, mime_type)
 				{
 					result_type = mime_type + "; charset=UTF-8";
-					handler = option::some(config.static);
+					handler = option::some(copy(config.static));
 				}
 			}
 		}
@@ -420,7 +421,7 @@ fn find_handler(config: internal_config, method: str, request_path: str, types: 
 		{
 			status_code = "403";			// don't allow access to files not under resources_root
 			status_mesg = "Forbidden";
-			let (_, _, _, h, _) = find_handler(config, method, "forbidden.html", ["types/html"], version);
+			let (_, _, _, h, _) = find_handler(copy(config), method, "forbidden.html", ["types/html"]/~, version);
 			handler = option::some(h);
 			#info["responding with %s %s (path wasn't udner resources_root)", status_code, status_mesg];
 		}
@@ -431,7 +432,7 @@ fn find_handler(config: internal_config, method: str, request_path: str, types: 
 	{
 		status_code = "404";
 		status_mesg = "Not Found";
-		handler = option::some(config.missing);
+		handler = option::some(copy(config.missing));
 		#info["responding with %s %s", status_code, status_mesg];
 	}
 	
@@ -443,7 +444,7 @@ fn make_initial_response(config: internal_config, status_code: str, status_mesg:
 	let headers = std::map::hash_from_strs([
 		("Server", config.server_info),
 		("Content-Length", "0"),
-		("Content-Type", mime_type)]);
+		("Content-Type", mime_type)]/~);
 	
 	let context = std::map::str_hash();
 	context.insert("request-path", mustache::str(request.path));
@@ -568,7 +569,7 @@ fn path_to_type(config: internal_config, path: str) -> str
 	}
 }
 
-fn found_headers(buffer: [u8]) -> bool
+fn found_headers(buffer: [u8]/~) -> bool
 {
 	if vec::len(buffer) < 4u
 	{
@@ -589,7 +590,7 @@ fn found_headers(buffer: [u8]) -> bool
 // the body.
 fn read_headers(sock: @socket::socket_handle) -> str unsafe
 {
-	let mut buffer = [];
+	let mut buffer = []/~;
 	
 	while !found_headers(buffer) 
 	{
@@ -673,7 +674,7 @@ fn read_body(sock: @socket::socket_handle, content_length: str) -> str unsafe
 {
 	let total_len = option::get(uint::from_str(content_length));
 	
-	let mut buffer = [];
+	let mut buffer = []/~;
 	vec::reserve(buffer, total_len);
 	
 	while vec::len(buffer) < total_len 
@@ -713,13 +714,13 @@ fn read_body(sock: @socket::socket_handle, content_length: str) -> str unsafe
 // TODO:
 // should add date header (which must adhere to rfc1123)
 // include last-modified and maybe etag
-fn process_request(config: internal_config, request: http_request, local_addr: str, remote_addr: str) -> (str, str)
+fn process_request(+config: internal_config, request: http_request, local_addr: str, remote_addr: str) -> (str, str)
 {
 	#info["Servicing %s for %s", request.method, request.url];
 	
 	let version = #fmt["%d.%d", request.major_version, request.minor_version];
 	let request = {version: version, method: request.method, local_addr: local_addr, remote_addr: remote_addr, path: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
-	let types = if request.headers.contains_key("accept") {str::split_char(request.headers.get("accept"), ',')} else {["text/html"]};
+	let types = if request.headers.contains_key("accept") {str::split_char(request.headers.get("accept"), ',')} else {["text/html"]/~};
 	let (response, body) = get_body(config, request, types);
 	
 	let mut headers = "";
@@ -743,7 +744,7 @@ fn process_request(config: internal_config, request: http_request, local_addr: s
 }
 
 // TODO: check connection: keep-alive
-fn service_request(config: internal_config, sock: @socket::socket_handle, request: http_request, local_addr: str,  remote_addr: str)
+fn service_request(+config: internal_config, sock: @socket::socket_handle, request: http_request, local_addr: str,  remote_addr: str)
 {
 	let (header, body) = process_request(config, request, local_addr, remote_addr);
 	let trailer = "r\n\r\n";
@@ -783,17 +784,17 @@ fn config_to_internal(config: config) -> internal_config
 		resources_root: config.resources_root,
 		route_list: vec::map(config.routes, to_route),
 		views_table: std::map::hash_from_strs(config.views),
-		static: config.static,
-		missing: config.missing,
+		static: copy(config.static),
+		missing: copy(config.missing),
 		static_type_table: std::map::hash_from_strs(config.static_types),
 		read_error: config.read_error,
-		load_rsrc: config.load_rsrc,
-		valid_rsrc: config.valid_rsrc,
+		load_rsrc: copy(config.load_rsrc),
+		valid_rsrc: copy(config.valid_rsrc),
 		settings: std::map::hash_from_strs(config.settings)}
 }
 
 // TODO: probably want to use task::unsupervise
-fn handle_client(config: config, fd: libc::c_int, local_addr: str, remote_addr: str)
+fn handle_client(++config: config, fd: libc::c_int, local_addr: str, remote_addr: str)
 {
 	let iconfig = config_to_internal(config);
 	let err = validate_config(iconfig);
@@ -819,12 +820,12 @@ fn handle_client(config: config, fd: libc::c_int, local_addr: str, remote_addr: 
 						let body = read_body(sock, request.headers.get("content-length"));
 						if str::is_not_empty(body)
 						{
-							service_request(iconfig, sock, {body: body with request}, local_addr, remote_addr);
+							service_request(copy(iconfig), sock, {body: body with request}, local_addr, remote_addr);
 						}
 					}
 					else
 					{
-						service_request(iconfig, sock, request, local_addr, remote_addr);
+						service_request(copy(iconfig), sock, request, local_addr, remote_addr);
 					}
 				}
 				result::err(mesg)
@@ -844,14 +845,15 @@ fn handle_client(config: config, fd: libc::c_int, local_addr: str, remote_addr: 
 	}
 }
 
-fn attach(config: config, host: str, shandle: @socket::socket_handle) -> result<@socket::socket_handle, str>
+fn attach(+config: config, host: str, shandle: @socket::socket_handle) -> result<@socket::socket_handle, str>
 {
 	#info["server is listening for new connections on %s:%?", host, config.port];
 	result::chain(socket::accept(shandle))
 	{|args|
 		let (fd, remote_addr) = args;
 		#info["connected to client at %s", remote_addr];
-		task::spawn {|| handle_client(config, fd, host, remote_addr)};
+		let config2 = copy(config);
+		task::spawn {|| handle_client(config2, fd, host, remote_addr)};
 		result::ok(shandle)
 	};
 	attach(config, host, shandle)
@@ -862,11 +864,11 @@ fn attach(config: config, host: str, shandle: @socket::socket_handle) -> result<
 fn routes_must_have_views()
 {
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("GET", "/", "home"), ("GET", "/hello", "greeting"), ("GET", "/goodbye", "farewell")],
-		views: [("home",  missing_view)]
+		routes: [("GET", "/", "home"), ("GET", "/hello", "greeting"), ("GET", "/goodbye", "farewell")]/~,
+		views: [("home",  missing_view)]/~
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
@@ -877,11 +879,11 @@ fn routes_must_have_views()
 fn views_must_have_routes()
 {
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("GET", "/", "home")],
-		views: [("home",  missing_view), ("greeting",  missing_view), ("goodbye",  missing_view)]
+		routes: [("GET", "/", "home")]/~,
+		views: [("home",  missing_view), ("greeting",  missing_view), ("goodbye",  missing_view)]/~
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
@@ -892,11 +894,11 @@ fn views_must_have_routes()
 fn root_must_have_required_files()
 {
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "/tmp",
-		routes: [("GET", "/", "home")],
-		views: [("home",  missing_view)]
+		routes: [("GET", "/", "home")]/~,
+		views: [("home",  missing_view)]/~
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 
@@ -930,7 +932,7 @@ fn make_request(url: str, mime_type: str) -> http_request
 		("accept", mime_type),
 		("accept-Language", "en-us,en"),
 		("accept-encoding", "gzip, deflate"),
-		("connection", "keep-alive")]);
+		("connection", "keep-alive")]/~);
 	{method: "GET", major_version: 1, minor_version: 1, url: url, headers: headers, body: ""}
 }
 
@@ -938,11 +940,11 @@ fn make_request(url: str, mime_type: str) -> http_request
 fn html_route()
 {
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("GET", "/foo/bar", "foo")],
-		views: [("foo",  test_view)],
+		routes: [("GET", "/foo/bar", "foo")]/~,
+		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
@@ -957,11 +959,11 @@ fn html_route()
 fn route_with_bad_type()
 {
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("GET", "/foo/bar", "foo")],
-		views: [("foo",  test_view)],
+		routes: [("GET", "/foo/bar", "foo")]/~,
+		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
@@ -978,11 +980,11 @@ fn route_with_bad_type()
 fn non_html_route()
 {
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("GET", "/foo/bar<text/csv>", "foo")],
-		views: [("foo",  test_view)],
+		routes: [("GET", "/foo/bar<text/csv>", "foo")]/~,
+		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
@@ -997,11 +999,11 @@ fn non_html_route()
 fn static_route()
 {
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("GET", "/foo/bar", "foo")],
-		views: [("foo",  test_view)],
+		routes: [("GET", "/foo/bar", "foo")]/~,
+		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader,
 		valid_rsrc: {|_path| true}
 		with server::initialize_config()};
@@ -1018,11 +1020,11 @@ fn static_route()
 fn static_with_bad_type()
 {
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("GET", "/foo/bar", "foo")],
-		views: [("foo",  test_view)],
+		routes: [("GET", "/foo/bar", "foo")]/~,
+		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader,
 		valid_rsrc: {|_path| true}
 		with server::initialize_config()};
@@ -1039,11 +1041,11 @@ fn static_with_bad_type()
 fn bad_url()
 {
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("GET", "/foo/bar", "foo")],
-		views: [("foo",  test_view)],
+		routes: [("GET", "/foo/bar", "foo")]/~,
+		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader,
 		valid_rsrc: {|_path| false}
 		with server::initialize_config()};
@@ -1061,11 +1063,11 @@ fn bad_url()
 fn path_outside_root()
 {
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("GET", "/foo/bar", "foo")],
-		views: [("foo",  test_view)],
+		routes: [("GET", "/foo/bar", "foo")]/~,
+		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader,
 		valid_rsrc: {|_path| true}
 		with server::initialize_config()};
@@ -1083,11 +1085,11 @@ fn path_outside_root()
 fn read_error()
 {
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("GET", "/foo/baz", "foo")],
-		views: [("foo",  test_view)],
+		routes: [("GET", "/foo/baz", "foo")]/~,
+		views: [("foo",  test_view)]/~,
 		load_rsrc: err_loader,
 		valid_rsrc: {|_path| true}
 		with server::initialize_config()};
@@ -1105,11 +1107,11 @@ fn read_error()
 fn bad_version()
 {
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("GET", "/foo/baz", "foo")],
-		views: [("foo",  test_view)],
+		routes: [("GET", "/foo/baz", "foo")]/~,
+		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader,
 		valid_rsrc: {|_path| true}
 		with server::initialize_config()};
@@ -1129,14 +1131,14 @@ fn bad_template()
 	let loader: rsrc_loader = {|_path| result::ok("unbalanced {{curly}} {{braces}")};
 	
 	let config = {
-		hosts: ["localhost"],
+		hosts: ["localhost"]/~,
 		server_info: "unit test",
 		resources_root: "server/html",
-		routes: [("GET", "/foo/baz", "foo")],
-		views: [("foo",  test_view)],
+		routes: [("GET", "/foo/baz", "foo")]/~,
+		views: [("foo",  test_view)]/~,
 		load_rsrc: loader,
 		valid_rsrc: {|_path| true},
-		settings: [("debug", "true")]
+		settings: [("debug", "true")]/~
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	

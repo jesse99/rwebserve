@@ -25,7 +25,7 @@ fn print_usage()
 	io::println("--version    prints the server version number and exits");
 } 
 
-fn parse_command_line(args: [str]) -> options
+fn parse_command_line(args: [str]/&) -> options
 {
 	let opts = [
 		optflag("admin"),
@@ -33,10 +33,21 @@ fn parse_command_line(args: [str]) -> options
 		optflag("h"),
 		optflag("help"),
 		optflag("version")
-	];
-	let match = alt getopts(vec::tail(args), opts)
+	]/~;
+	
+	let mut t = []/~;
+	for vec::eachi(args)		// TODO: tail should work eventually (see https://github.com/mozilla/rust/issues/2770)
+	{|i, a|
+		if i > 0
+		{
+			vec::push(t, copy(a));
+		}
+	}
+	//let t = vec::tail(args);
+	
+	let match = alt getopts(t, opts)
 	{
-		result::ok(m) {m}
+		result::ok(m) {copy(m)}
 		result::err(f) {io::stderr().write_line(fail_str(f)); libc::exit(1_i32)}
 	};
 	if opt_present(match, "h") || opt_present(match, "help")
@@ -66,7 +77,7 @@ fn validate_options(options: options)
 	}
 }
 
-fn process_command_line(args: [str]) -> str
+fn process_command_line(args: [str]/~) -> str
 {
 	if vec::len(args) != 2u || !str::starts_with(args[1], "--root=")
 	{
@@ -89,7 +100,7 @@ fn greeting_view(_settings: hashmap<str, str>, request: server::request, respons
 	{template: "hello.html" with response}
 }
 
-fn main(args: [str])
+fn main(args: [str]/~)
 {
 	#info["starting up sample server"];
 	let options = parse_command_line(args);
@@ -101,13 +112,13 @@ fn main(args: [str])
 	let home: server::response_handler = {|settings, request, response| home_view(settings, options, request, response)};	// need the temporary in order to get a unique fn pointer
 	
 	let config = {
-		hosts: ["localhost", "10.6.210.132"],
+		hosts: ["localhost", "10.6.210.132"]/~,
 		port: 8088_u16,
 		server_info: "sample rrest server " + get_version(),
 		resources_root: options.root,
-		routes: [("GET", "/", "home"), ("GET", "/hello/{name}", "greeting")],
-		views: [("home",  home), ("greeting", greeting_view)],
-		settings: [("debug",  "true")]
+		routes: [("GET", "/", "home"), ("GET", "/hello/{name}", "greeting")]/~,
+		views: [("home",  home), ("greeting", greeting_view)]/~,
+		settings: [("debug",  "true")]/~
 		with server::initialize_config()};
 	
 	server::start(config);

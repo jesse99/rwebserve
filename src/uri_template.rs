@@ -15,7 +15,7 @@ enum component
 // Templates look like:
 //    /blueprint/{site}/{building}		site and building match any (single) component
 //    /csv/*path							path matches zero or more components
-fn compile(template: str) -> [component]
+fn compile(template: str) -> [component]/~
 {
 	let parts = str::split_char_nonempty(template, '/');
 	
@@ -48,7 +48,7 @@ fn compile(template: str) -> [component]
 // Components should be the result of a call to compile.
 // Result will be non-empty iff all of the components in path match the specified components.
 // On matches result will have keys matching any variable names as well as a "fullpath" key matching the entire path.
-fn match(path: str, components: [component]) -> hashmap<str, str>
+fn match(path: str, components: [component]/~) -> hashmap<str, str>
 {
 	let parts = str::split_char_nonempty(path, '/');
 	

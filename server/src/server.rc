@@ -5,6 +5,8 @@
 #[license = "MIT"];
 #[doc = "Sample rrest web server"];
 
+#[warn(no_non_implicitly_copyable_typarams, no_vecs_not_implicitly_copyable)];	// , no_old_vecs
+
 use std;
 use mustache (name = "mustache", vers = "0.1");
 use rwebserve (name = "rwebserve", vers = "0.1");

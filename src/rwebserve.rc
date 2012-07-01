@@ -5,9 +5,11 @@
 #[license = "MIT"];
 #[doc = "Web server library"];
 
+#[warn(no_non_implicitly_copyable_typarams, no_vecs_not_implicitly_copyable)];	// , no_old_vecs
+
 use std;
 use mustache (name = "mustache", vers = "0.1");
-use rparse (name = "rparse", vers = "0.3");
+use rparse (name = "rparse", vers = "0.4");
 use socket (name = "socket", vers = "0.1");
 
 mod http_parser;

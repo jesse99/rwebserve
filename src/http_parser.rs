@@ -1,8 +1,6 @@
 import io;
 import io::writer_util;
 import rparse::*;
-import rparse::misc::*;
-import rparse::types::*;
 import std::map;
 import std::map::hashmap;
 
@@ -77,39 +75,37 @@ fn decode(url: str) -> str
 // double quotes can be used with header values that use separators
 fn request_parser() -> parser<http_request>
 {
-	let space1 = literal(" ");
-	let tab1 = literal("\t");
-	let lws = (space1.or(tab1)).repeat0();
-	let dot = literal(".");
-	let crnl = literal("\r\n").tag("Expected CRNL");
+	let ws = " \t".anyc();
+	let lws = ws.r0();
+	let crnl = "\r\n".lit().tag("Expected CRNL");
 	
 	// url := [^ ]+
-	let url = match1({|c| c != ' '}, "Expected an URL");
+	let url = match1({|c| c != ' '}).tag("Expected an URL");
 	
 	// version := integer '.' integer
-	let version = sequence3(integer(), dot, integer())
+	let version = seq3(decimal_number(), ".".lit(), decimal_number())
 		{|major, _a2, minor| result::ok((major, minor))};
 		
 	// method := identifier lws url lws 'HTTP/' version crnl
-	let method = sequence7(identifier(), lws, url, lws, literal("HTTP/"), version, crnl)
+	let method = seq7(identifier(), lws, url, lws, "HTTP/".lit(), version, crnl)
 		{|name, _a2, url, _a4, _a5, version, _a7| result::ok((name, url, version))};
 		
 	// value := [^\r\n]+
 	// continuation := crnl [ \t] value
-	let value = match1({|c| c != '\r' && c != '\n'}, "Expected a header value");
-	let continuation = sequence3(crnl, space1.or(tab1), value)
+	let value = match1({|c| c != '\r' && c != '\n'}).tag("Expected a header value");
+	let continuation = seq3(crnl, ws, value)
 		{|_a1, _a2, v| result::ok(" " + str::trim(v))};
 	
 	// name := [^:]+
 	// header := name ': ' value continuation* crnl
 	// headers := header*
-	let name = match1({|c| c != ':'}, "Expected a header name");
-	let header = sequence5(name, literal(":"), value, continuation.repeat0(), crnl)
+	let name = match1({|c| c != ':'}).tag("Expected a header name");
+	let header = seq5(name, ":".lit(), value, continuation.r0(), crnl)
 		{|n, _a2, v, cnt, _a5| result::ok((str::to_lower(n), str::trim(v) + str::connect(cnt, "")))};	// 4.2 says that header names are case-insensitive so we lower case them
-	let headers = header.repeat0();
+	let headers = header.r0();
 	
 	// request := method headers crnl
-	let request = sequence3(method, headers, crnl)
+	let request = seq3(method, headers, crnl)
 		{|a1, h, _a2|
 			let (n, u, (v1, v2)) = a1;
 			let entries = std::map::str_hash::<str>();
