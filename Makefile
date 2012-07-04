@@ -16,7 +16,7 @@ run: lib bin/server
 	#export RUST_LOG=rwebserve=4,socket=4,::rt::mem=4,::rt::comm=4,::rt::task=4,::rt::dom=4,::rt::cache=4,::rt::upcall=4,::rt::timer=4,::rt::gc=4,::rt::stdlib=4,::rt::kern=4 &&./bin/server --root=server/html
 
 check: bin/test-server
-	export RUST_LOG=rwebserve=1,rparse=1 && ./bin/test-server
+	export RUST_LOG='rwebserve=1,rparse=1' && ./bin/test-server
 
 check1: bin/test-server
 	export RUST_LOG=rwebserve=2 && ./bin/test-server non_html_route
@@ -31,7 +31,7 @@ install:
 update-libraries:
 	cp /usr/local/lib/rust/libmustache-*-0.1.dylib bin
 	cp /usr/local/lib/rust/libsocket-*-0.1.dylib bin
-	cp /usr/local/lib/rust/librparse-*-0.4.dylib bin
+	cp /usr/local/lib/rust/librparse-*-0.5.dylib bin
 
 # ------------------
 # Binary targets 

@@ -77,10 +77,10 @@ fn request_parser() -> parser<http_request>
 {
 	let ws = " \t".anyc();
 	let lws = ws.r0();
-	let crnl = "\r\n".lit().tag("Expected CRNL");
+	let crnl = "\r\n".lit().err("CRNL");
 	
 	// url := [^ ]+
-	let url = match1({|c| c != ' '}).tag("Expected an URL");
+	let url = match1({|c| c != ' '}).err("URL");
 	
 	// version := integer '.' integer
 	let version = seq3(decimal_number(), ".".lit(), decimal_number())
@@ -92,14 +92,14 @@ fn request_parser() -> parser<http_request>
 		
 	// value := [^\r\n]+
 	// continuation := crnl [ \t] value
-	let value = match1({|c| c != '\r' && c != '\n'}).tag("Expected a header value");
+	let value = match1({|c| c != '\r' && c != '\n'}).err("header value");
 	let continuation = seq3(crnl, ws, value)
 		{|_a1, _a2, v| result::ok(" " + str::trim(v))};
 	
 	// name := [^:]+
 	// header := name ': ' value continuation* crnl
 	// headers := header*
-	let name = match1({|c| c != ':'}).tag("Expected a header name");
+	let name = match1({|c| c != ':'}).err("header name");
 	let header = seq5(name, ":".lit(), value, continuation.r0(), crnl)
 		{|n, _a2, v, cnt, _a5| result::ok((str::to_lower(n), str::trim(v) + str::connect(cnt, "")))};	// 4.2 says that header names are case-insensitive so we lower case them
 	let headers = header.r0();
@@ -126,7 +126,7 @@ fn make_parser() -> fn@ (str) -> result::result<http_request, str>
 		let parser = request_parser();
 		result::chain_err(parse(parser, "http request", request))
 		{|err|
-			result::err(#fmt["%s on line %? col %?", err.mesg, err.line, err.col])
+			result::err(#fmt["Expected %s on line %? col %?", err.mesg, err.line, err.col])
 		}
 	}
 }

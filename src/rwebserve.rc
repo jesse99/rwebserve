@@ -9,7 +9,7 @@
 
 use std;
 use mustache (name = "mustache", vers = "0.1");
-use rparse (name = "rparse", vers = "0.4");
+use rparse (name = "rparse", vers = "0.5");
 use socket (name = "socket", vers = "0.1");
 
 mod http_parser;
