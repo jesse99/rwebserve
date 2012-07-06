@@ -83,34 +83,36 @@ fn request_parser() -> parser<http_request>
 	let url = match1({|c| c != ' '}).err("URL");
 	
 	// version := integer '.' integer
-	let version = seq3(decimal_number(), ".".lit(), decimal_number())
-		{|major, _a2, minor| result::ok((major, minor))};
+	let version = do seq3(decimal_number(), ".".lit(), decimal_number())
+		|major, _a2, minor| {result::ok((major, minor))};
 		
 	// method := identifier lws url lws 'HTTP/' version crnl
-	let method = seq7(identifier(), lws, url, lws, "HTTP/".lit(), version, crnl)
-		{|name, _a2, url, _a4, _a5, version, _a7| result::ok((name, url, version))};
+	let method = do seq7(identifier(), lws, url, lws, "HTTP/".lit(), version, crnl)
+		|name, _a2, url, _a4, _a5, version, _a7| {result::ok((name, url, version))};
 		
 	// value := [^\r\n]+
 	// continuation := crnl [ \t] value
 	let value = match1({|c| c != '\r' && c != '\n'}).err("header value");
-	let continuation = seq3(crnl, ws, value)
-		{|_a1, _a2, v| result::ok(" " + str::trim(v))};
+	let continuation = do seq3(crnl, ws, value)
+		|_a1, _a2, v| {result::ok(" " + str::trim(v))};
 	
 	// name := [^:]+
 	// header := name ': ' value continuation* crnl
 	// headers := header*
 	let name = match1({|c| c != ':'}).err("header name");
-	let header = seq5(name, ":".lit(), value, continuation.r0(), crnl)
-		{|n, _a2, v, cnt, _a5| result::ok((str::to_lower(n), str::trim(v) + str::connect(cnt, "")))};	// 4.2 says that header names are case-insensitive so we lower case them
+	let header = do seq5(name, ":".lit(), value, continuation.r0(), crnl)
+		|n, _a2, v, cnt, _a5| {result::ok((str::to_lower(n), str::trim(v) + str::connect(cnt, "")))};	// 4.2 says that header names are case-insensitive so we lower case them
 	let headers = header.r0();
 	
 	// request := method headers crnl
-	let request = seq3(method, headers, crnl)
-		{|a1, h, _a2|
+	let request = do seq3(method, headers, crnl)
+		|a1, h, _a2|
+		{
 			let (n, u, (v1, v2)) = a1;
 			let entries = std::map::str_hash::<str>();
-			vec::iter(h)
-			{|entry|
+			do vec::iter(h)
+			|entry|
+			{
 				let (n, v) = entry;
 				entries.insert(n, v);
 			};
@@ -122,10 +124,12 @@ fn request_parser() -> parser<http_request>
 // We return a closure so that we can build the parser just once.
 fn make_parser() -> fn@ (str) -> result::result<http_request, str>
 {
-	{|request: str|
+	|request: str|
+	{
 		let parser = request_parser();
-		result::chain_err(parse(parser, "http request", request))
-		{|err|
+		do result::chain_err(parse(parser, "http request", request))
+		|err|
+		{
 			result::err(#fmt["Expected %s on line %? col %?", err.mesg, err.line, err.col])
 		}
 	}

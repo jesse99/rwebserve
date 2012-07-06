@@ -19,8 +19,9 @@ fn compile(template: str) -> [component]/~
 {
 	let parts = str::split_char_nonempty(template, '/');
 	
-	let mut result = vec::map(parts)
-	{|part|
+	let mut result = do vec::map(parts)
+	|part|
+	{
 		if str::starts_with(part, "{") && str::ends_with(part, "}")
 		{
 			variable(str::slice(part, 1u, str::len(part)-1u))

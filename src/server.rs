@@ -174,16 +174,19 @@ fn start(+config: config)
 	let mut count = vec::len(config.hosts);
 	
 	// Accept connections from clients on one or more interfaces.
-	task::spawn {||
+	do task::spawn
+	{
 		for vec::each(config.hosts)
-		{|host|
+		|host|
+		{
 			let config2 = copy(config);
-			task::spawn
-			{||
-				let r = result::chain(socket::bind_socket(host, config2.port))
-				{|shandle|
-					result::chain(socket::listen(shandle, 10i32))
-						{|shandle| attach(copy(config2), host, shandle)}
+			do task::spawn
+			{
+				let r = do result::chain(socket::bind_socket(host, config2.port))
+				|shandle|
+				{
+					do result::chain(socket::listen(shandle, 10i32))
+						|shandle| {attach(copy(config2), host, shandle)}
 				};
 				if result::is_err(r)
 				{
@@ -247,7 +250,8 @@ fn validate_config(config: internal_config) -> str
 	}
 	
 	for vec::each(config.hosts)
-	{|host|
+	|host|
+	{
 		if str::is_empty(host)
 		{
 			vec::push(errors, "Host is empty.");
@@ -275,7 +279,8 @@ fn validate_config(config: internal_config) -> str
 	
 	let mut names = []/~;
 	for vec::each(["forbidden.html", "home.html", "not-found.html", "not-supported.html"]/~)
-	{|name|
+	|name|
+	{
 		let path = path::connect(config.resources_root, name);
 		if !os::path_exists(path)
 		{
@@ -295,7 +300,8 @@ fn validate_config(config: internal_config) -> str
 	let mut missing_routes = []/~;
 	let mut routes = []/~;
 	for config.route_list.each()
-	{|entry|
+	|entry|
+	{
 		let route = entry.route;
 		if !config.views_table.contains_key(route)
 		{
@@ -313,7 +319,8 @@ fn validate_config(config: internal_config) -> str
 	
 	let mut missing_views = []/~;
 	for config.views_table.each_key()
-	{|route|
+	|route|
+	{
 		if !vec::contains(routes, route)
 		{
 			vec::push(missing_views, route);
@@ -379,7 +386,8 @@ fn find_handler(+config: internal_config, method: str, request_path: str, types:
 	if option::is_none(handler)
 	{
 		for vec::each(config.route_list)
-		{|entry|
+		|entry|
+		{
 			if entry.method == method
 			{
 				let m = uri_template::match(request_path, entry.template);
@@ -489,8 +497,9 @@ fn load_template(config: internal_config, path: str) -> result::result<str, str>
 		ret true;
 	}
 	
-	result::chain(config.load_rsrc(path))
-	{|template|
+	do result::chain(config.load_rsrc(path))
+	|template|
+	{
 		if !config.settings.contains_key("debug") || config.settings.get("debug") == "false" || match_curly_braces(template)
 		{
 			result::ok(template)
@@ -596,9 +605,9 @@ fn read_headers(sock: @socket::socket_handle) -> str unsafe
 	{
 		alt socket::recv(sock, 1u)			// TODO: need a timeout
 		{
-			result::ok((buf, len))
+			result::ok(result)
 			{
-				vec::push(buffer, buf[0]);
+				vec::push(buffer, result.buffer[0]);
 			}
 			result::err(mesg)
 			{
@@ -681,12 +690,12 @@ fn read_body(sock: @socket::socket_handle, content_length: str) -> str unsafe
 	{
 		alt socket::recv(sock, total_len - vec::len(buffer))			// TODO: need a timeout
 		{
-			result::ok((buf, len))
+			result::ok(result)
 			{
 				let mut i = 0u;
-				while i < len
+				while i < result.bytes
 				{
-					vec::push(buffer, buf[i]);
+					vec::push(buffer, result.buffer[i]);
 					i += 1u;
 				}
 			}
@@ -725,7 +734,8 @@ fn process_request(+config: internal_config, request: http_request, local_addr: 
 	
 	let mut headers = "";
 	for response.headers.each()
-	{|name, value|
+	|name, value|
+	{
 		if name == "Content-Length" && value == "0"
 		{
 			headers += #fmt["Content-Length: %?\r\n", str::len(body)];
@@ -748,9 +758,9 @@ fn service_request(+config: internal_config, sock: @socket::socket_handle, reque
 {
 	let (header, body) = process_request(config, request, local_addr, remote_addr);
 	let trailer = "r\n\r\n";
-	str::as_buf(header) 	{|buffer| socket::send_buf(sock, buffer, str::len(header))};
-	str::as_buf(body)	{|buffer| socket::send_buf(sock, buffer, str::len(body))};
-	str::as_buf(trailer)  	{|buffer| socket::send_buf(sock, buffer, str::len(trailer))};
+	do str::as_buf(header) |buffer| {socket::send_buf(sock, buffer, str::len(header))};
+	do str::as_buf(body)	|buffer| {socket::send_buf(sock, buffer, str::len(body))};
+	do str::as_buf(trailer)  	|buffer| {socket::send_buf(sock, buffer, str::len(trailer))};
 }
 
 fn to_route(input: (str, str, str)) -> route
@@ -848,12 +858,12 @@ fn handle_client(++config: config, fd: libc::c_int, local_addr: str, remote_addr
 fn attach(+config: config, host: str, shandle: @socket::socket_handle) -> result<@socket::socket_handle, str>
 {
 	#info["server is listening for new connections on %s:%?", host, config.port];
-	result::chain(socket::accept(shandle))
-	{|args|
-		let (fd, remote_addr) = args;
-		#info["connected to client at %s", remote_addr];
+	do result::chain(socket::accept(shandle))
+	|result|
+	{
+		#info["connected to client at %s", result.remote_addr];
 		let config2 = copy(config);
-		task::spawn {|| handle_client(config2, fd, host, remote_addr)};
+		do task::spawn {handle_client(config2, result.fd, host, result.remote_addr)};
 		result::ok(shandle)
 	};
 	attach(config, host, shandle)
@@ -1005,7 +1015,7 @@ fn static_route()
 		routes: [("GET", "/foo/bar", "foo")]/~,
 		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader,
-		valid_rsrc: {|_path| true}
+		valid_rsrc: |_path| {true}
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
@@ -1026,7 +1036,7 @@ fn static_with_bad_type()
 		routes: [("GET", "/foo/bar", "foo")]/~,
 		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader,
-		valid_rsrc: {|_path| true}
+		valid_rsrc: |_path| {true}
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
@@ -1047,7 +1057,7 @@ fn bad_url()
 		routes: [("GET", "/foo/bar", "foo")]/~,
 		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader,
-		valid_rsrc: {|_path| false}
+		valid_rsrc: |_path| {false}
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
@@ -1069,7 +1079,7 @@ fn path_outside_root()
 		routes: [("GET", "/foo/bar", "foo")]/~,
 		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader,
-		valid_rsrc: {|_path| true}
+		valid_rsrc: |_path| {true}
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
@@ -1091,7 +1101,7 @@ fn read_error()
 		routes: [("GET", "/foo/baz", "foo")]/~,
 		views: [("foo",  test_view)]/~,
 		load_rsrc: err_loader,
-		valid_rsrc: {|_path| true}
+		valid_rsrc: |_path| {true}
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
@@ -1113,7 +1123,7 @@ fn bad_version()
 		routes: [("GET", "/foo/baz", "foo")]/~,
 		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader,
-		valid_rsrc: {|_path| true}
+		valid_rsrc: |_path| {true}
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);
 	
@@ -1128,7 +1138,7 @@ fn bad_version()
 #[test]
 fn bad_template()
 {
-	let loader: rsrc_loader = {|_path| result::ok("unbalanced {{curly}} {{braces}")};
+	let loader: rsrc_loader = |_path| {result::ok("unbalanced {{curly}} {{braces}")};
 	
 	let config = {
 		hosts: ["localhost"]/~,
@@ -1137,7 +1147,7 @@ fn bad_template()
 		routes: [("GET", "/foo/baz", "foo")]/~,
 		views: [("foo",  test_view)]/~,
 		load_rsrc: loader,
-		valid_rsrc: {|_path| true},
+		valid_rsrc: |_path| {true},
 		settings: [("debug", "true")]/~
 		with server::initialize_config()};
 	let iconfig = config_to_internal(config);

@@ -37,7 +37,8 @@ fn parse_command_line(args: [str]/&) -> options
 	
 	let mut t = []/~;
 	for vec::eachi(args)		// TODO: tail should work eventually (see https://github.com/mozilla/rust/issues/2770)
-	{|i, a|
+	|i, a|
+	{
 		if i > 0
 		{
 			vec::push(t, copy(a));
@@ -109,7 +110,7 @@ fn main(args: [str]/~)
 	// This is an example of how additional information can be communicated to
 	// a view handler (in this case we're only communicating options.admin so
 	// using settings would be simpler).
-	let home: server::response_handler = {|settings, request, response| home_view(settings, options, request, response)};	// need the temporary in order to get a unique fn pointer
+	let home: server::response_handler = |settings, request, response| {home_view(settings, options, request, response)};	// need the temporary in order to get a unique fn pointer
 	
 	let config = {
 		hosts: ["localhost", "10.6.210.132"]/~,
