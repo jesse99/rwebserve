@@ -5,43 +5,46 @@ import io;
 import io::writer_util;
 import socket;
 import std::map::hashmap; 
+import std::time::tm;
 import http_parser::*;
 import uri_template;
 
 export request, response, response_handler, config, initialize_config, start;
 
 // ---- Exported Items --------------------------------------------------------
-#[doc = "Configuration information for the web server.
-
-* hosts are the ip addresses (or 'localhost') that the server binds to.
-* port is the TCP port that the server listens on.
-* server_info is included in the HTTP response and should include the server name and version.
-* resources_root should be a path to where the files associated with URLs are loaded from.
-* routes: maps HTTP methods and URI templates (\"/hello/{name}\") to route names (\"greeting\"). To support non text/html types append the template with \"<some/type>\".
-* views: maps route names to view handler functions.
-* static: used to handle URIs that don't match routes, but are found beneath resources_root.
-* missing: used to handle URIs that don't match routes, and are not found beneath resources_root.
-* static_types: maps file extensions (including the period) to mime types.
-* read_error: html used when a file fails to load. Must include {{request-path}} template.
-* load_rsrc: maps a path rooted at resources_root to a resource body.
-* valid_rsrc: returns true if a path rooted at resources_root points to a file.
-* settings: arbitrary key/value pairs passed into view handlers. If debug is \"true\" rwebserve debugging code will be enabled.
-
-initialize_config can be used to initialize some of these fields."]
+/// Configuration information for the web server.
+/// 
+/// * hosts are the ip addresses (or "localhost") that the server binds to.
+/// * port is the TCP port that the server listens on.
+/// * server_info is included in the HTTP response and should include the server name and version.
+/// * resources_root should be a path to where the files associated with URLs are loaded from.
+/// * routes: maps HTTP methods and URI templates ("/hello/{name}") to route names ("greeting"). 
+/// To support non text/html types append the template with "<some/type>".
+/// * views: maps route names to view handler functions.
+/// * static: used to handle URIs that don't match routes, but are found beneath resources_root.
+/// * missing: used to handle URIs that don't match routes, and are not found beneath resources_root.
+/// * static_types: maps file extensions (including the period) to mime types.
+/// * read_error: html used when a file fails to load. Must include {{request-path}} template.
+/// * load_rsrc: maps a path rooted at resources_root to a resource body.
+/// * valid_rsrc: returns true if a path rooted at resources_root points to a file.
+/// * settings: arbitrary key/value pairs passed into view handlers. If debug is "true" rwebserve debugging 
+/// code will be enabled (among other things this will default the Cache-Control header to "no-cache").
+/// 
+/// initialize_config can be used to initialize some of these fields.
 type config = {
-	hosts: [str]/~,
+	hosts: ~[str],
 	port: u16,
 	server_info: str,
 	resources_root: str,
-	routes: [(str, str, str)]/~,					// better to use hashmap, but afaict there is no way to send a hashmap to a task
-	views: [(str, response_handler)]/~,
+	routes: ~[(str, str, str)],					// better to use hashmap, but hashmaps cannot be sent
+	views: ~[(str, response_handler)],
 	static: response_handler,
 	missing: response_handler,
-	static_types: [(str, str)]/~,
+	static_types: ~[(str, str)],
 	read_error: str,
 	load_rsrc: rsrc_loader,
 	valid_rsrc: rsrc_exists,
-	settings: [(str, str)]/~};
+	settings: ~[(str, str)]};
 	
 #[doc = "Information about incoming http requests. Passed into view functions.
 
@@ -163,7 +166,7 @@ fn initialize_config() -> config
 <p>Could not read URL {{request-path}}.</p>",
 	load_rsrc: io::read_whole_file_str,
 	valid_rsrc: os::path_exists,
-	settings: []/~}
+	settings: ~[]}
 }
 
 #[doc = "Startup the server.
@@ -451,10 +454,17 @@ fn find_handler(+config: internal_config, method: str, request_path: str, types:
 
 fn make_initial_response(config: internal_config, status_code: str, status_mesg: str, mime_type: str, request: request) -> response
 {
-	let headers = std::map::hash_from_strs([
-		("Server", config.server_info),
+	let headers = std::map::hash_from_strs(~[
 		("Content-Length", "0"),
-		("Content-Type", mime_type)]/~);
+		("Content-Type", mime_type),
+		("Date", std::time::now_utc().rfc822()),
+		("Server", config.server_info),
+	]);
+	
+	if config.settings.contains_key("debug")
+	{
+		headers.insert("Cache-Control", "no-cache");
+	}
 	
 	let context = std::map::str_hash();
 	context.insert("request-path", mustache::str(request.path));
@@ -601,7 +611,7 @@ fn found_headers(buffer: [u8]/~) -> bool
 // the body.
 fn read_headers(sock: @socket::socket_handle) -> str unsafe
 {
-	let mut buffer = []/~;
+	let mut buffer = ~[];
 	
 	while !found_headers(buffer) 
 	{
@@ -618,6 +628,7 @@ fn read_headers(sock: @socket::socket_handle) -> str unsafe
 			}
 		}
 	}
+	vec::push(buffer, 0);		// must be null terminated
 	
 	if str::is_utf8(buffer)
 	{
@@ -685,7 +696,7 @@ fn read_body(sock: @socket::socket_handle, content_length: str) -> str unsafe
 {
 	let total_len = option::get(uint::from_str(content_length));
 	
-	let mut buffer = []/~;
+	let mut buffer = ~[];
 	vec::reserve(buffer, total_len);
 	
 	while vec::len(buffer) < total_len 
@@ -708,6 +719,8 @@ fn read_body(sock: @socket::socket_handle, content_length: str) -> str unsafe
 			}
 		}
 	}
+	vec::push(buffer, 0);		// must be null terminated
+	#info["buffer: %?", buffer];
 	
 	if str::is_utf8(buffer)
 	{
@@ -723,7 +736,6 @@ fn read_body(sock: @socket::socket_handle, content_length: str) -> str unsafe
 }
 
 // TODO:
-// should add date header (which must adhere to rfc1123)
 // include last-modified and maybe etag
 fn process_request(+config: internal_config, request: http_request, local_addr: str, remote_addr: str) -> (str, str)
 {
@@ -820,6 +832,7 @@ fn handle_client(++config: config, fd: libc::c_int, local_addr: str, remote_addr
 	let parse = make_parser();
 	loop
 	{
+		#debug["-----------------------------------------------------------"];
 		let headers = read_headers(sock);
 		if str::is_not_empty(headers)
 		{
@@ -833,6 +846,10 @@ fn handle_client(++config: config, fd: libc::c_int, local_addr: str, remote_addr
 						if str::is_not_empty(body)
 						{
 							service_request(copy(iconfig), sock, {body: body with request}, local_addr, remote_addr);
+						}
+						else
+						{
+							#info["Ignoring %s and %s", headers, body];
 						}
 					}
 					else
