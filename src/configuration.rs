@@ -6,10 +6,11 @@
 /// * port is the TCP port that the server listens on.
 /// * server_info is included in the HTTP response and should include the server name and version.
 /// * resources_root should be a path to where the files associated with URLs are loaded from.
-/// * routes: maps HTTP methods and URI templates ("/hello/{name}") to route names ("greeting"). 
-/// To support non text/html types append the template with "<some/type>".
+/// * routes: maps HTTP methods ("GET") and URI templates ("hello/{name}") to route names ("greeting"). 
+/// To support non-text/html types append the template with "<some/type>".
 /// * views: maps route names to view handler functions.
 /// * static: used to handle URIs that don't match routes, but are found beneath resources_root.
+/// * sse: provides support for server-sent events.
 /// * missing: used to handle URIs that don't match routes, and are not found beneath resources_root.
 /// * static_types: maps file extensions (including the period) to mime types.
 /// * read_error: html used when a file fails to load. Must include {{request-path}} template.
@@ -27,6 +28,7 @@ type config = {
 	routes: ~[(str, str, str)],					// better to use hashmap, but hashmaps cannot be sent
 	views: ~[(str, response_handler)],
 	static: response_handler,
+	sse: ~[(str, open_sse)],
 	missing: response_handler,
 	static_types: ~[(str, str)],
 	read_error: str,
@@ -70,7 +72,7 @@ type response = {
 	body: str,
 	template: str,
 	context: hashmap<str, mustache::data>};
-
+	
 /// Function used to generate an HTTP response.
 /// 
 /// On entry reponse.status will typically be set to \"200 OK\". response.headers will include something like the following:
@@ -118,6 +120,7 @@ fn initialize_config() -> config
 	routes: ~[],
 	views: ~[],
 	static: static_view,
+	sse: ~[],
 	missing: missing_view,
 	static_types: ~[
 		(".m4a", "audio/mp4"),
@@ -159,8 +162,7 @@ fn initialize_config() -> config
 
 type route = {method: str, template: ~[uri_template::component], mime_type: str, route: str};
 
-// Task specific version of config. Should be identical to config (except that it uses
-// hashmaps instead of arrays of tuples).
+// Like config except that it is client specific, uses hashmaps, and adds sse_tasks.
 type internal_config = {
 	hosts: ~[str],
 	port: u16,
@@ -169,6 +171,8 @@ type internal_config = {
 	route_list: ~[route],
 	views_table: hashmap<str, response_handler>,
 	static: response_handler,
+	sse_openers: hashmap<str, open_sse>,	// key is a GET path
+	sse_tasks: hashmap<str, sse_chan>,		// key is a GET path
 	missing: response_handler,
 	static_type_table: hashmap<str, str>,
 	read_error: str,
@@ -222,6 +226,7 @@ fn config_to_internal(config: config) -> internal_config
 		route_list: vec::map(config.routes, to_route),
 		views_table: std::map::hash_from_strs(config.views),
 		static: copy(config.static),
+		sse_openers: std::map::hash_from_strs(config.sse),
 		missing: copy(config.missing),
 		static_type_table: std::map::hash_from_strs(config.static_types),
 		read_error: config.read_error,

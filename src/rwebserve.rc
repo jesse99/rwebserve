@@ -17,5 +17,6 @@ mod configuration;
 mod http_parser;
 mod request;
 mod server;
+mod sse;
 mod uri_template;
 mod utils;
