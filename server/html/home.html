@@ -1,10 +1,20 @@
 <!DOCTYPE html>
 <meta charset=utf-8>
 
-<title>rrest example server</title>
-<p>Check out the <a href="/hello/julius">content!</a></p>
-
-{{#admin}}
-<a href="/shutdown">shutdown</a>
-{{/admin}}
+<html lang="en">
+	<head>
+		<script defer="true" src="home.js"></script>
+		<title>rrest example server</title>
+	</head>
+	
+	<body>
+		<p>Check out the <a href="/hello/julius">content!</a></p>
+		
+		<p>Uptime: <span id="uptime">unknown</span></p>
+		
+		{{#admin}}
+		<a href="/shutdown">shutdown</a>
+		{{/admin}}
+	</body>
+<html>
 

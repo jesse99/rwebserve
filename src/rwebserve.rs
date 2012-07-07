@@ -9,8 +9,8 @@ import std::time::tm;
 
 import configuration::*;
 
-// This is the public API. Items not exported here should not be used by clients.
-// TODO: Hopefully we can clean this up a lot when exporting works a bit better.
+// This is the public API. Clients should only use the items exported here.
+// TODO: Hopefully we can clean up the configuration exporting when rust works a bit better.
 import start = server::start; export start;
 
 import config = configuration::config; export config;

@@ -27,15 +27,15 @@ fn print_usage()
 
 fn parse_command_line(args: [str]/&) -> options
 {
-	let opts = [
+	let opts = ~[
 		optflag("admin"),
 		reqopt("root"),
 		optflag("h"),
 		optflag("help"),
 		optflag("version")
-	]/~;
+	];
 	
-	let mut t = []/~;
+	let mut t = ~[];
 	for vec::eachi(args)		// TODO: tail should work eventually (see https://github.com/mozilla/rust/issues/2770)
 	|i, a|
 	{
@@ -78,7 +78,7 @@ fn validate_options(options: options)
 	}
 }
 
-fn process_command_line(args: [str]/~) -> str
+fn process_command_line(args: ~[str]) -> str
 {
 	if vec::len(args) != 2u || !str::starts_with(args[1], "--root=")
 	{
@@ -101,7 +101,27 @@ fn greeting_view(_settings: hashmap<str, str>, request: server::request, respons
 	{template: "hello.html" with response}
 }
 
-fn main(args: [str]/~)
+fn uptime_view(settings: hashmap<str, str>, _request: server::request, response: server::response) -> server::response
+{
+	response.headers.insert("Cache-Control", "no-cache");
+	response.headers.insert("Content-Type", "text/event-stream");
+	
+	let uptime = if !settings.contains_key("uptime")
+	{
+		settings.insert("uptime", "0");
+		0i
+	}
+	else
+	{
+		let time = int::from_str(settings["uptime"]).get() + 1;
+		settings.insert("uptime", int::to_str(time, 10));
+		time
+	};
+	
+	{body: #fmt["retry: 5000\ndata: %?\n\n", uptime] with response}
+}
+
+fn main(args: ~[str])
 {
 	#info["starting up sample server"];
 	let options = parse_command_line(args);
@@ -111,15 +131,24 @@ fn main(args: [str]/~)
 	// a view handler (in this case we're only communicating options.admin so
 	// using settings would be simpler).
 	let home: server::response_handler = |settings, request, response| {home_view(settings, options, request, response)};	// need the temporary in order to get a unique fn pointer
+	let up: server::response_handler = |settings, request, response| {uptime_view(settings, request, response)};	// need the temporary in order to get a unique fn pointer
 	
 	let config = {
-		hosts: ["localhost", "10.6.210.132"]/~,
+		hosts: ~["localhost", "10.6.210.132"],
 		port: 8088_u16,
 		server_info: "sample rrest server " + get_version(),
 		resources_root: options.root,
-		routes: [("GET", "/", "home"), ("GET", "/hello/{name}", "greeting")]/~,
-		views: [("home",  home), ("greeting", greeting_view)]/~,
-		settings: [("debug",  "true")]/~
+		routes: ~[
+			("GET", "/", "home"),
+			("GET", "/hello/{name}", "greeting"),
+			("GET", "/uptime<text/event-stream>", "uptime"),
+		],
+		views: ~[
+			("home",  home),
+			("greeting", greeting_view),
+			("uptime", up),
+		],
+		settings: ~[("debug",  "true")]
 		with server::initialize_config()};
 	
 	server::start(config);
