@@ -1,8 +1,5 @@
-import io;
-import io::writer_util;
 import rparse::*;
 import std::map;
-import std::map::hashmap;
 
 export header_map, http_request, make_parser;
 

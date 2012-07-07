@@ -1,5 +1,3 @@
-import std::map::hashmap; 
-
 export component, compile, match;
 
 // Components of a template path.

@@ -12,7 +12,10 @@ use mustache (name = "mustache", vers = "0.1");
 use rparse (name = "rparse", vers = "0.5");
 use socket (name = "socket", vers = "0.1");
 
+mod client;
+mod configuration;
 mod http_parser;
+mod request;
 mod server;
 mod uri_template;
-
+mod utils;
