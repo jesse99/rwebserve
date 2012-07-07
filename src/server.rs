@@ -147,7 +147,7 @@ fn initialize_config() -> config
 		(".txt", "text/plain"),
 		(".text", "text/plain"),
 		(".xml", "text/xml"),
-
+		
 		(".js", "text/javascript"),
 		
 		(".mp4", "video/mp4"),
@@ -420,7 +420,7 @@ fn find_handler(+config: internal_config, method: str, request_path: str, types:
 			if config.valid_rsrc(path)
 			{
 				let mime_type = path_to_type(config, request_path);
-				if vec::contains(types, mime_type)
+				if vec::contains(types, "*/*") || vec::contains(types, mime_type)
 				{
 					result_type = mime_type + "; charset=UTF-8";
 					handler = option::some(copy(config.static));
