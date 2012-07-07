@@ -147,6 +147,8 @@ fn initialize_config() -> config
 		(".txt", "text/plain"),
 		(".text", "text/plain"),
 		(".xml", "text/xml"),
+
+		(".js", "text/javascript"),
 		
 		(".mp4", "video/mp4"),
 		(".mov", "video/quicktime"),
