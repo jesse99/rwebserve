@@ -1,6 +1,7 @@
 /// Server-sent event support.
 // http://www.w3.org/TR/2009/WD-html5-20090212/comms.html
 // http://dev.w3.org/html5/eventsource
+import client::*;
 import request::*;
 
 /// Called by the server to spin up a task for an sse session. Returns a

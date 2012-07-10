@@ -190,7 +190,7 @@ fn uptime_sse(registrar: state_chan, push: server::push_chan) -> server::control
 	do spawn_threaded_listener(2)
 	|control_port: server::control_port|
 	{
-		#info["starting uptime sse streamer"];
+		#info["starting uptime sse stream"];
 		let notify_port = comm::port();
 		let notify_chan = comm::chan(notify_port);
 		
@@ -213,7 +213,7 @@ fn uptime_sse(registrar: state_chan, push: server::push_chan) -> server::control
 				}
 				either::right(server::close_event)
 				{
-					#info["shutting down uptime sse streamer"];
+					#info["shutting down uptime sse stream"];
 					comm::send(registrar, remove_listener(key));
 					break;
 				}

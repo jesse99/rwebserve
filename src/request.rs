@@ -1,6 +1,7 @@
 /// Handles an incoming request from a client and sends a response.
 import http_parser::*;
 import imap::imap_methods;
+import client::*;
 import sse::*;
 
 export process_request, make_header_and_body, make_initial_response;
