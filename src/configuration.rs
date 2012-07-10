@@ -10,7 +10,7 @@
 /// To support non-text/html types append the template with "<some/type>".
 /// * views: maps route names to view handler functions.
 /// * static: used to handle URIs that don't match routes, but are found beneath resources_root.
-/// * sse: provides support for server-sent events.
+/// * sse: maps EventSource path to a function that creates a task to push server-sent events.
 /// * missing: used to handle URIs that don't match routes, and are not found beneath resources_root.
 /// * static_types: maps file extensions (including the period) to mime types.
 /// * read_error: html used when a file fails to load. Must include {{request-path}} template.
@@ -101,6 +101,27 @@ type rsrc_loader = fn~ (str) -> result::result<str, str>;
 /// Returns true if a path rooted at resources_root points to a file.
 type rsrc_exists = fn~ (str) -> bool;
 
+type route = {method: str, template: ~[uri_template::component], mime_type: str, route: str};
+
+// Like config except that it is client specific, uses hashmaps, and adds some fields for sse.
+type internal_config = {
+	hosts: ~[str],
+	port: u16,
+	server_info: str,
+	resources_root: str,
+	route_list: ~[route],
+	views_table: hashmap<str, response_handler>,
+	static: response_handler,
+	sse_openers: hashmap<str, open_sse>,		// key is a GET path
+	sse_tasks: hashmap<str, control_chan>,	// key is a GET path
+	sse_push: comm::chan<str>,
+	missing: response_handler,
+	static_type_table: hashmap<str, str>,
+	read_error: str,
+	load_rsrc: rsrc_loader,
+	valid_rsrc: rsrc_exists,
+	settings: hashmap<str, str>};
+
 /// Initalizes several config fields.
 /// 
 /// * port is initialized to 80.
@@ -160,26 +181,6 @@ fn initialize_config() -> config
 	settings: ~[]}
 }
 
-type route = {method: str, template: ~[uri_template::component], mime_type: str, route: str};
-
-// Like config except that it is client specific, uses hashmaps, and adds sse_tasks.
-type internal_config = {
-	hosts: ~[str],
-	port: u16,
-	server_info: str,
-	resources_root: str,
-	route_list: ~[route],
-	views_table: hashmap<str, response_handler>,
-	static: response_handler,
-	sse_openers: hashmap<str, open_sse>,	// key is a GET path
-	sse_tasks: hashmap<str, sse_chan>,		// key is a GET path
-	missing: response_handler,
-	static_type_table: hashmap<str, str>,
-	read_error: str,
-	load_rsrc: rsrc_loader,
-	valid_rsrc: rsrc_exists,
-	settings: hashmap<str, str>};
-
 // Default config.static view handler.
 fn static_view(_settings: hashmap<str, str>, _request: request, response: response) -> response
 {
@@ -217,7 +218,7 @@ fn to_route(input: (str, str, str)) -> route
 	}
 }
 
-fn config_to_internal(config: config) -> internal_config
+fn config_to_internal(config: config, push: comm::chan<str>) -> internal_config
 {
 	{	hosts: config.hosts,
 		port: config.port,
@@ -227,6 +228,8 @@ fn config_to_internal(config: config) -> internal_config
 		views_table: std::map::hash_from_strs(config.views),
 		static: copy(config.static),
 		sse_openers: std::map::hash_from_strs(config.sse),
+		sse_tasks: std::map::str_hash(),
+		sse_push: push,
 		missing: copy(config.missing),
 		static_type_table: std::map::hash_from_strs(config.static_types),
 		read_error: config.read_error,
@@ -342,7 +345,10 @@ fn routes_must_have_views()
 		routes: [("GET", "/", "home"), ("GET", "/hello", "greeting"), ("GET", "/goodbye", "farewell")]/~,
 		views: [("home",  missing_view)]/~
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	assert validate_config(iconfig) == "No views for the following routes: farewell, greeting";
 }
@@ -357,7 +363,10 @@ fn views_must_have_routes()
 		routes: [("GET", "/", "home")]/~,
 		views: [("home",  missing_view), ("greeting",  missing_view), ("goodbye",  missing_view)]/~
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	assert validate_config(iconfig) == "No routes for the following views: goodbye, greeting";
 }
@@ -372,7 +381,10 @@ fn root_must_have_required_files()
 		routes: [("GET", "/", "home")]/~,
 		views: [("home",  missing_view)]/~
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	assert validate_config(iconfig) == "Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";
 }

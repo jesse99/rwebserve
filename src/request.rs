@@ -1,23 +1,46 @@
 /// Handles an incoming request from a client and sends a response.
 import http_parser::*;
+import imap::imap_methods;
+import sse::*;
 
-export process_request;
+export process_request, make_header_and_body, make_initial_response;
 
 // TODO:
 // include last-modified and maybe etag
-fn process_request(+config: internal_config, request: http_request, local_addr: str, remote_addr: str) -> (str, str)
+fn process_request(config: internal_config, request: http_request, local_addr: str, remote_addr: str) -> (str, str)
 {
 	#info["Servicing %s for %s", request.method, request.url];
 	
 	let version = #fmt["%d.%d", request.major_version, request.minor_version];
-	let request = {version: version, method: request.method, local_addr: local_addr, remote_addr: remote_addr, path: request.url, matches: std::map::str_hash(), headers: request.headers, body: request.body};
+	let request = {version: version, method: request.method, local_addr: local_addr, remote_addr: remote_addr, path: request.url, matches: std::map::str_hash(), headers: std::map::hash_from_strs(request.headers), body: request.body};
 	let types = if request.headers.contains_key("accept") {str::split_char(request.headers.get("accept"), ',')} else {["text/html"]/~};
 	let (response, body) = get_body(config, request, types);
 	
+	let (header, body) = make_header_and_body(response, body);
+	#debug["response header: %s", header];
+	#debug["response body: %s", body];
+	
+	(header, body)
+}
+
+fn make_header_and_body(response: response, body: str) -> (str, str)
+{
 	let mut headers = "";
+	let mut has_content_len = false;
+	let mut is_chunked = false;
+	
 	for response.headers.each()
 	|name, value|
 	{
+		if name == "Content-Length"
+		{
+			has_content_len = true;
+		}
+		else if name == "Transfer-Encoding" && value == "chunked"
+		{
+			is_chunked = true;
+		}
+		
 		if name == "Content-Length" && value == "0"
 		{
 			headers += #fmt["Content-Length: %?\r\n", str::len(body)];
@@ -28,19 +51,29 @@ fn process_request(+config: internal_config, request: http_request, local_addr: 
 		}
 	};
 	
-	let header = #fmt["HTTP/1.1 %s\r\n%s\r\n", response.status, headers];
-	#debug["response header: %s", header];
-	#debug["response body: %s", body];
+	if is_chunked
+	{
+		assert !has_content_len;
+	}
+	else if !has_content_len
+	{
+		headers += #fmt["Content-Length: %?\r\n", str::len(body)];
+	}
 	
-	(header, body)
+	(#fmt["HTTP/1.1 %s\r\n%s\r\n", response.status, headers],
+		if is_chunked {#fmt["%X\r\n%s\r\n", str::len(body), body]} else {body})
 }
 
-fn get_body(+config: internal_config, request: request, types: [str]/~) -> (response, str)
+fn get_body(config: internal_config, request: request, types: ~[str]) -> (response, str)
 {
 	if request.path == "/shutdown"		// TODO: enable this via debug cfg (or maybe via a command line option)
 	{
 		#info["received shutdown request"];
 		libc::exit(0_i32)
+	}
+	else if vec::contains(types, "text/event-stream")
+	{
+		process_sse(config, request)
 	}
 	else
 	{
@@ -62,7 +95,7 @@ fn get_body(+config: internal_config, request: request, types: [str]/~) -> (resp
 	}
 }
 
-fn find_handler(+config: internal_config, method: str, request_path: str, types: [str]/~, version: str) -> (str, str, str, response_handler, hashmap<str, str>)
+fn find_handler(+config: internal_config, method: str, request_path: str, types: ~[str], version: str) -> (str, str, str, response_handler, hashmap<str, str>)
 {
 	let mut handler = option::none;
 	let mut status_code = "200";
@@ -148,7 +181,6 @@ fn find_handler(+config: internal_config, method: str, request_path: str, types:
 fn make_initial_response(config: internal_config, status_code: str, status_mesg: str, mime_type: str, request: request) -> response
 {
 	let headers = std::map::hash_from_strs(~[
-		("Content-Length", "0"),
 		("Content-Type", mime_type),
 		("Date", std::time::now_utc().rfc822()),
 		("Server", config.server_info),
@@ -304,13 +336,13 @@ fn err_loader(path: str) -> result::result<str, str>
 #[cfg(test)]
 fn make_request(url: str, mime_type: str) -> http_request
 {
-	let headers = std::map::hash_from_strs([		// http_parser lower cases header names so we do too
+	let headers = ~[		// http_parser lower cases header names so we do too
 		("host", "localhost:8080"),
 		("user-agent", "Mozilla/5.0"),
 		("accept", mime_type),
 		("accept-Language", "en-us,en"),
 		("accept-encoding", "gzip, deflate"),
-		("connection", "keep-alive")]/~);
+		("connection", "keep-alive")];
 	{method: "GET", major_version: 1, minor_version: 1, url: url, headers: headers, body: ""}
 }
 
@@ -325,7 +357,10 @@ fn html_route()
 		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	let request = make_request("/foo/bar", "text/html");
 	let (_header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -344,7 +379,10 @@ fn route_with_bad_type()
 		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	let request = make_request("/foo/bar", "text/zzz");
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -365,7 +403,10 @@ fn non_html_route()
 		views: [("foo",  test_view)]/~,
 		load_rsrc: null_loader
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	let request = make_request("/foo/bar", "text/csv");
 	let (_header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -385,7 +426,10 @@ fn static_route()
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {true}
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	let request = make_request("/foo/baz.jpg", "text/html,image/jpeg");
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -406,7 +450,10 @@ fn static_with_bad_type()
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {true}
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	let request = make_request("/foo/baz.jpg", "text/zzz");
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -427,7 +474,10 @@ fn bad_url()
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {false}
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	let request = make_request("/foo/baz.jpg", "text/html,image/jpeg");
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -449,7 +499,10 @@ fn path_outside_root()
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {true}
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	let request = make_request("/foo/../../baz.jpg", "text/html,image/jpeg");
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -471,7 +524,10 @@ fn read_error()
 		load_rsrc: err_loader,
 		valid_rsrc: |_path| {true}
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	let request = make_request("/foo/baz.jpg", "text/html,image/jpeg");
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -493,7 +549,10 @@ fn bad_version()
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {true}
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	let request = {major_version: 100 with make_request("/foo/baz.jpg", "text/html,image/jpeg")};
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -518,7 +577,10 @@ fn bad_template()
 		valid_rsrc: |_path| {true},
 		settings: [("debug", "true")]/~
 		with initialize_config()};
-	let iconfig = config_to_internal(config);
+		
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	let iconfig = config_to_internal(config, ech);
 	
 	alt load_template(iconfig, "blah.html")
 	{

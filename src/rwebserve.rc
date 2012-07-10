@@ -15,6 +15,7 @@ use socket (name = "socket", vers = "0.1");
 mod client;
 mod configuration;
 mod http_parser;
+mod imap;
 mod request;
 mod server;
 mod sse;

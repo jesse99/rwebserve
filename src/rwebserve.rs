@@ -24,7 +24,8 @@ import start = server::start; export start;
 
 import open_sse = sse::open_sse; export open_sse;
 import push_chan = sse::push_chan; export push_chan;
-import sse_chan = sse::sse_chan; export sse_chan;
-import sse_event = sse::sse_event; export sse_event;
+import control_port = sse::control_port; export control_port;
+import control_chan = sse::control_chan; export control_chan;
+import control_event = sse::control_event; export control_event;
 import refresh_event = sse::refresh_event; export refresh_event;
 import close_event = sse::close_event; export close_event;

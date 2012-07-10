@@ -89,6 +89,25 @@ fn process_command_line(args: ~[str]) -> str
 	str::slice(args[1], str::len("--root="), str::len(args[1]))
 }
 
+// Like spawn_listener except the new task (and whatever tasks it spawns) are distributed
+// among a fixed number of OS threads. TODO: work around for https://github.com/mozilla/rust/issues/2841
+fn spawn_threaded_listener<A:send>(num_threads: uint, +block: fn~ (comm::port<A>)) -> comm::chan<A>
+{
+	let channel_port: comm::port<comm::chan<A>> = comm::port();
+	let channel_channel = comm::chan(channel_port);
+	
+	do task::spawn_sched(task::manual_threads(num_threads))
+	{
+		let task_port: comm::port<A> = comm::port();
+		let task_channel = comm::chan(task_port);
+		comm::send(channel_channel, task_channel);
+		
+		block(task_port);
+	};
+	
+	comm::recv(channel_port)
+}
+
 fn home_view(_settings: hashmap<str, str>, options: options, _request: server::request, response: server::response) -> server::response
 {
 	response.context.insert("admin", mustache::bool(options.admin));
@@ -101,37 +120,120 @@ fn greeting_view(_settings: hashmap<str, str>, request: server::request, respons
 	{template: "hello.html" with response}
 }
 
-fn uptime_view(settings: hashmap<str, str>, _request: server::request, response: server::response) -> server::response
+enum state_mesg
 {
-	response.headers.insert("Cache-Control", "no-cache");
-	response.headers.insert("Content-Type", "text/event-stream");
-	
-	let uptime = if !settings.contains_key("uptime")
+	add_listener(str, comm::chan<int>),	// str is used to identify the listener
+	remove_listener(str),
+	shutdown,
+}
+
+type state_chan = comm::chan<state_mesg>;
+
+// This is a single task that manages the state for our sample server. Normally this will
+// do something like get notified of database changes and send messages to connection
+// specific listeners. The listeners could then use server-sent events (sse) to push new
+// data to the client.
+//
+// In this case our state is just an int and we notify listeners when we change it.
+fn manage_state() -> state_chan
+{
+	do spawn_threaded_listener(3)
+	|state_port: comm::port<state_mesg>|
 	{
-		settings.insert("uptime", "0");
-		0i
+		let timer_port = comm::port();
+		let timer_chan = comm::chan(timer_port);
+		
+		// TODO: Can get rid of this once peek works better. See https://github.com/mozilla/rust/issues/2841
+		do task::spawn
+		{
+			loop
+			{
+				libc::funcs::posix88::unistd::sleep(1);
+				comm::send(timer_chan, 1);
+			}
+		};
+		
+		let mut time = 0;
+		let listeners = std::map::str_hash();
+		loop
+		{
+			alt comm::select2(timer_port, state_port)
+			{
+				either::left(_)
+				{
+					time += 1;
+					for listeners.each_value |ch| {comm::send(ch, copy(time))};
+				}
+				either::right(add_listener(key, ch))
+				{
+					let added = listeners.insert(key, ch);
+					assert added;
+				}
+				either::right(remove_listener(key))
+				{
+					listeners.remove(key);
+				}
+				either::right(shutdown)
+				{
+					break;
+				}
+			}
+		}
 	}
-	else
+}
+
+// Each client connection that hits /uptime will cause an instance of this task to run. When
+// manage_state tells us that the world has changed we push the new world (an int in
+// this case) out to the client.
+fn uptime_sse(registrar: state_chan, push: server::push_chan) -> server::control_chan
+{
+	do spawn_threaded_listener(2)
+	|control_port: server::control_port|
 	{
-		let time = int::from_str(settings["uptime"]).get() + 1;
-		settings.insert("uptime", int::to_str(time, 10));
-		time
-	};
-	
-	{body: #fmt["retry: 5000\ndata: %?\n\n", uptime] with response}
+		#info["starting uptime sse streamer"];
+		let notify_port = comm::port();
+		let notify_chan = comm::chan(notify_port);
+		
+		let key = #fmt["uptime %?", ptr::addr_of(notify_port)];
+		comm::send(registrar, add_listener(key, notify_chan));
+		
+		loop
+		{
+			let mut time = 0;
+			alt comm::select2(notify_port, control_port)
+			{
+				either::left(new_time)
+				{
+					time = new_time;
+					comm::send(push, #fmt["retry: 5000\ndata: %?\n\n", time]);
+				}
+				either::right(server::refresh_event)
+				{
+					comm::send(push, #fmt["retry: 5000\ndata: %?\n\n", time]);
+				}
+				either::right(server::close_event)
+				{
+					#info["shutting down uptime sse streamer"];
+					comm::send(registrar, remove_listener(key));
+					break;
+				}
+			}
+		}
+	}
 }
 
 fn main(args: ~[str])
 {
-	#info["starting up sample server"];
 	let options = parse_command_line(args);
 	validate_options(options);
+	
+	let registrar = manage_state();
 	
 	// This is an example of how additional information can be communicated to
 	// a view handler (in this case we're only communicating options.admin so
 	// using settings would be simpler).
-	let home: server::response_handler = |settings, request, response| {home_view(settings, options, request, response)};	// need the temporary in order to get a unique fn pointer
-	let up: server::response_handler = |settings, request, response| {uptime_view(settings, request, response)};	// need the temporary in order to get a unique fn pointer
+	let home: server::response_handler = |settings, request, response| {home_view(settings, options, request, response)};
+	let up: server::open_sse = |_settings, push| {uptime_sse(registrar, push)};
 	
 	let config = {
 		hosts: ~["localhost", "10.6.210.132"],
@@ -141,13 +243,12 @@ fn main(args: ~[str])
 		routes: ~[
 			("GET", "/", "home"),
 			("GET", "/hello/{name}", "greeting"),
-			("GET", "/uptime<text/event-stream>", "uptime"),
 		],
 		views: ~[
 			("home",  home),
 			("greeting", greeting_view),
-			("uptime", up),
 		],
+		sse: ~[("/uptime", up)],
 		settings: ~[("debug",  "true")]
 		with server::initialize_config()};
 	

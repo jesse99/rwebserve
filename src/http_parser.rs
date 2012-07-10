@@ -1,16 +1,15 @@
+import imap::*;
 import rparse::*;
 import std::map;
 
-export header_map, http_request, make_parser;
-
-type header_map = map::hashmap<str, str>;
+export http_request, make_parser;
 
 type http_request = {
 	method: str,					// per 5.1.1 these are case sensitive
 	major_version: int,
 	minor_version: int,
 	url: str,
-	headers: header_map,		// these are not case sensitive so we lower case them
+	headers: ~[(str, str)],		// these are not case sensitive so we lower case them
 	body: str};					// set elsewhere
 	
 fn is_hex(octet: u8) -> bool
@@ -74,7 +73,7 @@ fn request_parser() -> parser<http_request>
 {
 	let ws = " \t".anyc();
 	let lws = ws.r0();
-	let crnl = "\r\n".lit().err("CRNL");
+	let crnl = "\r\n".lit();
 	
 	// url := [^ ]+
 	let url = match1({|c| c != ' '}).err("URL");
@@ -89,14 +88,14 @@ fn request_parser() -> parser<http_request>
 		
 	// value := [^\r\n]+
 	// continuation := crnl [ \t] value
-	let value = match1({|c| c != '\r' && c != '\n'}).err("header value");
+	let value = match1({|c| c != '\r' && c != '\n'});
 	let continuation = do seq3(crnl, ws, value)
 		|_a1, _a2, v| {result::ok(" " + str::trim(v))};
 	
 	// name := [^:]+
 	// header := name ': ' value continuation* crnl
 	// headers := header*
-	let name = match1({|c| c != ':'}).err("header name");
+	let name = match1({|c| c != ':'});
 	let header = do seq5(name, ":".lit(), value, continuation.r0(), crnl)
 		|n, _a2, v, cnt, _a5| {result::ok((str::to_lower(n), str::trim(v) + str::connect(cnt, "")))};	// 4.2 says that header names are case-insensitive so we lower case them
 	let headers = header.r0();
@@ -106,14 +105,7 @@ fn request_parser() -> parser<http_request>
 		|a1, h, _a2|
 		{
 			let (n, u, (v1, v2)) = a1;
-			let entries = std::map::str_hash::<str>();
-			do vec::iter(h)
-			|entry|
-			{
-				let (n, v) = entry;
-				entries.insert(n, v);
-			};
-			result::ok({method: n, major_version: v1, minor_version: v2, url: decode(u), headers: entries, body: ""})};
+			result::ok({method: n, major_version: v1, minor_version: v2, url: decode(u), headers: h, body: ""})};
 	
 	ret request;
 }

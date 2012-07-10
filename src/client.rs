@@ -2,13 +2,21 @@
 import socket;
 import http_parser::*;
 import request::*;
+import imap::imap_methods;
+import sse;
 
 export handle_client;
 
 // TODO: probably want to use task::unsupervise
 fn handle_client(++config: config, fd: libc::c_int, local_addr: str, remote_addr: str)
 {
-	let iconfig = config_to_internal(config);
+	let sock = @socket::socket_handle(fd);
+	let sport = comm::port();
+	let sch = comm::chan(sport);
+	let eport = comm::port();
+	let ech = comm::chan(eport);
+	
+	let iconfig = config_to_internal(config, ech);
 	let err = validate_config(iconfig);
 	if str::is_not_empty(err)
 	{
@@ -16,11 +24,38 @@ fn handle_client(++config: config, fd: libc::c_int, local_addr: str, remote_addr
 		fail;
 	}
 	
+	do task::spawn {read_requests(fd, sch);}
+	loop
+	{
+		#debug["-----------------------------------------------------------"];
+		alt comm::select2(sport, eport)
+		{
+			either::left(option::some(request))
+			{
+				let (header, body) = process_request(iconfig, request, local_addr, remote_addr);
+				write_response(sock, header, body);
+			}
+			either::left(option::none)
+			{
+				sse::close_sses(iconfig);
+				break;
+			}
+			either::right(body)
+			{
+				let response = sse::make_response(iconfig);
+				let (_, body) = make_header_and_body(response, body);
+				write_response(sock, "", body);
+			}
+		}
+	}
+}
+
+fn read_requests(fd: libc::c_int, poke: comm::chan<option::option<http_request>>)
+{
 	let sock = @socket::socket_handle(fd);
 	let parse = make_parser();
 	loop
 	{
-		#debug["-----------------------------------------------------------"];
 		let headers = read_headers(sock);
 		if str::is_not_empty(headers)
 		{
@@ -33,7 +68,7 @@ fn handle_client(++config: config, fd: libc::c_int, local_addr: str, remote_addr
 						let body = read_body(sock, request.headers.get("content-length"));
 						if str::is_not_empty(body)
 						{
-							service_request(copy(iconfig), sock, {body: body with request}, local_addr, remote_addr);
+							comm::send(poke, option::some({body: body with request}));
 						}
 						else
 						{
@@ -42,7 +77,7 @@ fn handle_client(++config: config, fd: libc::c_int, local_addr: str, remote_addr
 					}
 					else
 					{
-						service_request(copy(iconfig), sock, request, local_addr, remote_addr);
+						comm::send(poke, option::some(request));
 					}
 				}
 				result::err(mesg)
@@ -57,6 +92,7 @@ fn handle_client(++config: config, fd: libc::c_int, local_addr: str, remote_addr
 			// Client closed connection or there was some sort of error
 			// (in which case the client will re-open a connection).
 			#info["detached from client"];
+			comm::send(poke, option::none);
 			break;
 		}
 	}
@@ -159,11 +195,13 @@ fn read_body(sock: @socket::socket_handle, content_length: str) -> str unsafe
 }
 
 // TODO: check connection: keep-alive
-fn service_request(+config: internal_config, sock: @socket::socket_handle, request: http_request, local_addr: str,  remote_addr: str)
+// TODO: presumbably when we switch to a better socket library we'll be able to handle errors here...
+fn write_response(sock: @socket::socket_handle, header: str, body: str)
 {
-	let (header, body) = process_request(config, request, local_addr, remote_addr);
-	let trailer = "r\n\r\n";
-	do str::as_buf(header) |buffer| {socket::send_buf(sock, buffer, str::len(header))};
-	do str::as_buf(body)	|buffer| {socket::send_buf(sock, buffer, str::len(body))};
-	do str::as_buf(trailer)  	|buffer| {socket::send_buf(sock, buffer, str::len(trailer))};
+	// It's probably more efficient to do the concatenation rather than two sends because
+	// we'll avoid a context switch into the kernel. In any case this seems to increase the
+	// likelihood of the network stack putting all of this into a single packet which makes
+	// packets easier to analyze.
+	let data = header + body;
+	do str::as_buf(data) |buffer| {socket::send_buf(sock, buffer, str::len(data))};
 }
