@@ -1,14 +1,14 @@
-/// The module responsible for communication with a particular client.
+/// The module responsible for communication using a persistent connection to a client.
 import socket;
 import http_parser::*;
 import request::*;
 import imap::imap_methods;
 import sse;
 
-export handle_client, internal_config, config_to_internal;
+export handle_connection, conn_config, config_to_conn;
 
-// Like config except that it is client specific, uses hashmaps, and adds some fields for sse.
-type internal_config = {
+// Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.
+type conn_config = {
 	hosts: ~[str],
 	port: u16,
 	server_info: str,
@@ -27,7 +27,7 @@ type internal_config = {
 	settings: hashmap<str, str>};
 
 // TODO: probably want to use task::unsupervise
-fn handle_client(++config: config, fd: libc::c_int, local_addr: str, remote_addr: str)
+fn handle_connection(++config: config, fd: libc::c_int, local_addr: str, remote_addr: str)
 {
 	let sock = @socket::socket_handle(fd);
 	let sport = comm::port();
@@ -35,7 +35,7 @@ fn handle_client(++config: config, fd: libc::c_int, local_addr: str, remote_addr
 	let eport = comm::port();
 	let ech = comm::chan(eport);
 	
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	let err = validate_config(iconfig);
 	if str::is_not_empty(err)
 	{
@@ -225,7 +225,7 @@ fn write_response(sock: @socket::socket_handle, header: str, body: str)
 	do str::as_buf(data) |buffer| {socket::send_buf(sock, buffer, str::len(data))};
 }
 
-fn config_to_internal(config: config, push: comm::chan<str>) -> internal_config
+fn config_to_conn(config: config, push: comm::chan<str>) -> conn_config
 {
 	{	hosts: config.hosts,
 		port: config.port,
@@ -245,7 +245,7 @@ fn config_to_internal(config: config, push: comm::chan<str>) -> internal_config
 		settings: std::map::hash_from_strs(config.settings)}
 }
 
-fn validate_config(config: internal_config) -> str
+fn validate_config(config: conn_config) -> str
 {
 	let mut errors = ~[];
 	
@@ -379,7 +379,7 @@ fn routes_must_have_views()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	assert validate_config(iconfig) == "No views for the following routes: farewell, greeting";
 }
@@ -397,7 +397,7 @@ fn views_must_have_routes()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	assert validate_config(iconfig) == "No routes for the following views: goodbye, greeting";
 }
@@ -415,7 +415,7 @@ fn root_must_have_required_files()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	assert validate_config(iconfig) == "Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";
 }

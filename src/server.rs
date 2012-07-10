@@ -1,6 +1,6 @@
 // http://www.w3.org/Protocols/rfc2616/rfc2616.html
 import socket;
-import client::*;
+import connection::*;
 
 export start;
 
@@ -54,7 +54,7 @@ fn attach(+config: config, host: str, shandle: @socket::socket_handle) -> result
 	{
 		#info["connected to client at %s", result.remote_addr];
 		let config2 = copy(config);
-		do task::spawn {handle_client(config2, result.fd, host, result.remote_addr)};
+		do task::spawn {handle_connection(config2, result.fd, host, result.remote_addr)};
 		result::ok(shandle)
 	};
 	attach(config, host, shandle)

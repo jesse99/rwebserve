@@ -1,7 +1,7 @@
 /// Server-sent event support.
 // http://www.w3.org/TR/2009/WD-html5-20090212/comms.html
 // http://dev.w3.org/html5/eventsource
-import client::*;
+import connection::*;
 import request::*;
 
 /// Called by the server to spin up a task for an sse session. Returns a
@@ -37,7 +37,7 @@ enum control_event
 }
 
 // This is invoked when the client sends a GET on behalf of an event source.
-fn process_sse(config: internal_config, request: request) -> (response, str)
+fn process_sse(config: conn_config, request: request) -> (response, str)
 {
 	let mut code = "200";
 	let mut mesg = "OK";
@@ -66,7 +66,7 @@ fn process_sse(config: internal_config, request: request) -> (response, str)
 	(response, "\n\n")
 }
 
-fn open_sse(config: internal_config, request: request, push_data: push_chan) -> bool
+fn open_sse(config: conn_config, request: request, push_data: push_chan) -> bool
 {
 	alt config.sse_openers.find(request.path)
 	{
@@ -85,7 +85,7 @@ fn open_sse(config: internal_config, request: request, push_data: push_chan) -> 
 	}
 }
 
-fn close_sses(config: internal_config)
+fn close_sses(config: conn_config)
 {
 	#info["closing all sse"];
 	for config.sse_tasks.each_value
@@ -95,7 +95,7 @@ fn close_sses(config: internal_config)
 	};
 }
 
-fn make_response(config: internal_config) -> response
+fn make_response(config: conn_config) -> response
 {
 	let headers = std::map::hash_from_strs(~[
 		("Cache-Control", "no-cache"),

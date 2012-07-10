@@ -1,14 +1,14 @@
-/// Handles an incoming request from a client and sends a response.
+/// Handles an incoming request from a client connection and sends a response.
 import http_parser::*;
 import imap::imap_methods;
-import client::*;
+import connection::*;
 import sse::*;
 
 export process_request, make_header_and_body, make_initial_response;
 
 // TODO:
 // include last-modified and maybe etag
-fn process_request(config: internal_config, request: http_request, local_addr: str, remote_addr: str) -> (str, str)
+fn process_request(config: conn_config, request: http_request, local_addr: str, remote_addr: str) -> (str, str)
 {
 	#info["Servicing %s for %s", request.method, request.url];
 	
@@ -65,7 +65,7 @@ fn make_header_and_body(response: response, body: str) -> (str, str)
 		if is_chunked {#fmt["%X\r\n%s\r\n", str::len(body), body]} else {body})
 }
 
-fn get_body(config: internal_config, request: request, types: ~[str]) -> (response, str)
+fn get_body(config: conn_config, request: request, types: ~[str]) -> (response, str)
 {
 	if request.path == "/shutdown"		// TODO: enable this via debug cfg (or maybe via a command line option)
 	{
@@ -96,7 +96,7 @@ fn get_body(config: internal_config, request: request, types: ~[str]) -> (respon
 	}
 }
 
-fn find_handler(+config: internal_config, method: str, request_path: str, types: ~[str], version: str) -> (str, str, str, response_handler, hashmap<str, str>)
+fn find_handler(+config: conn_config, method: str, request_path: str, types: ~[str], version: str) -> (str, str, str, response_handler, hashmap<str, str>)
 {
 	let mut handler = option::none;
 	let mut status_code = "200";
@@ -179,7 +179,7 @@ fn find_handler(+config: internal_config, method: str, request_path: str, types:
 	ret (status_code, status_mesg, result_type, option::get(handler), matches);
 }
 
-fn make_initial_response(config: internal_config, status_code: str, status_mesg: str, mime_type: str, request: request) -> response
+fn make_initial_response(config: conn_config, status_code: str, status_mesg: str, mime_type: str, request: request) -> response
 {
 	let headers = std::map::hash_from_strs(~[
 		("Content-Type", mime_type),
@@ -201,7 +201,7 @@ fn make_initial_response(config: internal_config, status_code: str, status_mesg:
 	{status: status_code + " " + status_mesg, headers: headers, body: "", template: "", context: context}
 }
 
-fn load_template(config: internal_config, path: str) -> result::result<str, str>
+fn load_template(config: conn_config, path: str) -> result::result<str, str>
 {
 	// {{ should be followed by }} (rust-mustache hangs if this is not the case).
 	fn match_curly_braces(text: str) -> bool
@@ -249,7 +249,7 @@ fn load_template(config: internal_config, path: str) -> result::result<str, str>
 	}
 }
 
-fn process_template(config: internal_config, response: response, request: request) -> (response, str)
+fn process_template(config: conn_config, response: response, request: request) -> (response, str)
 {
 	let path = path::connect(config.resources_root, response.template);
 	let (response, body) =
@@ -291,7 +291,7 @@ fn process_template(config: internal_config, response: response, request: reques
 	}
 }
 
-fn path_to_type(config: internal_config, path: str) -> str
+fn path_to_type(config: conn_config, path: str) -> str
 {
 	let extension = tuple::second(path::splitext(path));
 	if str::is_not_empty(extension)
@@ -361,7 +361,7 @@ fn html_route()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	let request = make_request("/foo/bar", "text/html");
 	let (_header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -383,7 +383,7 @@ fn route_with_bad_type()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	let request = make_request("/foo/bar", "text/zzz");
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -407,7 +407,7 @@ fn non_html_route()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	let request = make_request("/foo/bar", "text/csv");
 	let (_header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -430,7 +430,7 @@ fn static_route()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	let request = make_request("/foo/baz.jpg", "text/html,image/jpeg");
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -454,7 +454,7 @@ fn static_with_bad_type()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	let request = make_request("/foo/baz.jpg", "text/zzz");
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -478,7 +478,7 @@ fn bad_url()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	let request = make_request("/foo/baz.jpg", "text/html,image/jpeg");
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -503,7 +503,7 @@ fn path_outside_root()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	let request = make_request("/foo/../../baz.jpg", "text/html,image/jpeg");
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -528,7 +528,7 @@ fn read_error()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	let request = make_request("/foo/baz.jpg", "text/html,image/jpeg");
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -553,7 +553,7 @@ fn bad_version()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	let request = {major_version: 100 with make_request("/foo/baz.jpg", "text/html,image/jpeg")};
 	let (header, body) = process_request(iconfig, request, "10.11.12.13", "1.2.3.4");
@@ -581,7 +581,7 @@ fn bad_template()
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
-	let iconfig = config_to_internal(config, ech);
+	let iconfig = config_to_conn(config, ech);
 	
 	alt load_template(iconfig, "blah.html")
 	{
