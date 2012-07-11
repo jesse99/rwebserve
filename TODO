@@ -8,13 +8,10 @@ tcpdump -i lo0 -w packets.pcap tcp
 
 
 * Log client ip, method, url
-* Disallow requests where the request path has a component enclosed in parens:
-	- but what about relative URLs? even when they are relative the browser generates an abs path 
 * Need a way for users to generate URLs:
 	- also need to encode them if they have bad chars
-* Need to include a date header. Think that there is a std::time now.
+* Make sure that the date header is OK. See section 3.3.1
 * Work on http support:
-	- connection close means the connection should close, 8.1.2.1
 	- timeout connections
 	- handle continue, 8.2.3
 	- methods are documented in 9.0
@@ -23,15 +20,23 @@ tcpdump -i lo0 -w packets.pcap tcp
 	- 13.2.1 says expiration may be in the past
 	- should headers be typed?
 	- 14.1 has headers
+* Add better pipelining support:
+	- make conn_config sendable
+	- use a thread pool to cap number of outstanding items in the pipline (see spawn_threaded_listener)
+	- tasks will need to communicate back with the main connection task
+		response, sse info, maybe settings
+	- probably want to process non-idempotent methods in the connection task (tho, per the
+	  rfc, clients should not pipeline these)
 * Caching
 	- chapter 6 has good info
-* Add default css handler.
+* Content negotiation should use quality values, see section 3.9
 * Tween support could be cool.
 * Make sure examples are well commented.
 * Look at some python or haskell web servers.
 * Look at:
 	- hal, rest-style json: http://stateless.co/hal_specification.html
 * Work on restbucks example.
+* Handle expect request header
 * Talk about architecture.
 * Servers need to handle Connection: close in requests
 

@@ -1,9 +1,11 @@
+"use strict";
+
 window.onload = function()
 {
 	var timeElement = document.getElementById('uptime');
 	timeElement.innerHTML = "whatever";
 	
-	source = new EventSource('/uptime');
+	var source = new EventSource('/uptime');
 	source.addEventListener('message', function(event)
 	{
 		console.log('> received ' + event.data);
