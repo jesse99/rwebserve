@@ -9,7 +9,7 @@ import request::*;
 ///
 /// The hashmap contains the config settings. The push_chan allows the
 /// task to push data to the client.
-type open_sse = fn~ (hashmap<str, str>, push_chan) -> control_chan;
+type open_sse = fn~ (hashmap<str, str>, request: request, push_chan) -> control_chan;
 
 /// The channel used by server tasks to send data to a client.
 ///
@@ -73,7 +73,7 @@ fn open_sse(config: conn_config, request: request, push_data: push_chan) -> bool
 		option::some(opener)
 		{
 			#info["opening sse for %s", request.path];
-			let sse = opener(config.settings, push_data);
+			let sse = opener(config.settings, request, push_data);
 			config.sse_tasks.insert(request.path, sse);
 			true
 		}

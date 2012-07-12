@@ -233,7 +233,7 @@ fn main(args: ~[str])
 	// a view handler (in this case we're only communicating options.admin so
 	// using settings would be simpler).
 	let home: server::response_handler = |settings, request, response| {home_view(settings, options, request, response)};
-	let up: server::open_sse = |_settings, push| {uptime_sse(registrar, push)};
+	let up: server::open_sse = |_settings, _request, push| {uptime_sse(registrar, push)};
 	
 	let config = {
 		hosts: ~["localhost", "10.6.210.132"],
