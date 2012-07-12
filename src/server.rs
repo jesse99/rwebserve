@@ -54,7 +54,8 @@ fn attach(+config: config, host: str, shandle: @socket::socket_handle) -> result
 	{
 		#info["connected to client at %s", result.remote_addr];
 		let config2 = copy(config);
-		do task::spawn {handle_connection(config2, result.fd, host, result.remote_addr)};
+		do task::spawn_sched(task::manual_threads(4)) {handle_connection(config2, result.fd, host, result.remote_addr)};	// TODO: work around for https://github.com/mozilla/rust/issues/2841
+		//do task::spawn {handle_connection(config2, result.fd, host, result.remote_addr)};
 		result::ok(shandle)
 	};
 	attach(config, host, shandle)
