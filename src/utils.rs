@@ -47,3 +47,25 @@ fn dump_string(title: str, text: str)
 		io::println("");
 	}
 }
+
+#[cfg(test)]
+fn check_strs(actual: str, expected: str) -> bool
+{
+	if actual != expected
+	{
+		io::stderr().write_line(#fmt["Found '%s', but expected '%s'", actual, expected]);
+		ret false;
+	}
+	ret true;
+}
+
+#[cfg(test)]
+fn check_vectors<T>(actual: ~[T], expected: ~[T]) -> bool
+{
+	if actual != expected
+	{
+		io::stderr().write_line(#fmt["Found '%?', but expected '%?'", actual, expected]);
+		ret false;
+	}
+	ret true;
+}

@@ -3,6 +3,7 @@ import http_parser::*;
 import imap::imap_methods;
 import connection::*;
 import sse::*;
+import utils::*;
 
 export process_request, make_header_and_body, make_initial_response;
 
@@ -13,7 +14,8 @@ fn process_request(config: conn_config, request: http_request, local_addr: str, 
 	#info["Servicing %s for %s", request.method, request.url];
 	
 	let version = #fmt["%d.%d", request.major_version, request.minor_version];
-	let request = {version: version, method: request.method, local_addr: local_addr, remote_addr: remote_addr, path: request.url, matches: std::map::str_hash(), headers: std::map::hash_from_strs(request.headers), body: request.body};
+	let (path, params) = parse_url(request.url);
+	let request = {version: version, method: request.method, local_addr: local_addr, remote_addr: remote_addr, path: path, matches: std::map::str_hash(), params: params, headers: std::map::hash_from_strs(request.headers), body: request.body};
 	let types = if request.headers.contains_key("accept") {str::split_char(request.headers.get("accept"), ',')} else {["text/html"]/~};
 	let (response, body) = get_body(config, request, types);
 	
@@ -22,6 +24,33 @@ fn process_request(config: conn_config, request: http_request, local_addr: str, 
 	#debug["response body: %s", body];
 	
 	(header, body)
+}
+
+fn parse_url(url: str) -> (str, imap::imap<str, str>)
+{
+	alt str::find_char(url, '?')
+	{
+		option::some(i)
+		{
+			let query = str::slice(url, i+1, str::len(url));
+			let parts = str::split_char(query, '&');
+			let params = do vec::map(parts) |p| {str::split_char(p, '=')};
+			if do vec::all(params) |p| {vec::len(p) == 2}
+			{
+				(str::slice(url, 0, i), do vec::map(params) |p| {(p[0], p[1])})
+			}
+			else
+			{
+				// It's not a valid query string so we'll just let the server handle it.
+				// Presumbably it won't match any routes so we'll get an error then.
+				(url, ~[])
+			}
+		}
+		option::none
+		{
+			(url, ~[])
+		}
+	}
 }
 
 fn make_header_and_body(response: response, body: str) -> (str, str)
@@ -595,4 +624,24 @@ fn bad_template()
 			assert str::contains(s, "mismatched curly braces");
 		}
 	}
+}
+
+#[test]
+fn query_strings()
+{
+	let (path, params) = parse_url("/some/url");
+	assert check_strs(path, "/some/url");
+	assert check_vectors(params, ~[]);
+	
+	let (path, params) = parse_url("/some/url?badness");
+	assert check_strs(path, "/some/url?badness");
+	assert check_vectors(params, ~[]);
+	
+	let (path, params) = parse_url("/some?name=value");
+	assert check_strs(path, "/some");
+	assert check_vectors(params, ~[("name", "value")]);
+	
+	let (path, params) = parse_url("/some?name=value&foo=bar");
+	assert check_strs(path, "/some");
+	assert check_vectors(params, ~[("name", "value"), ("foo", "bar")]);
 }

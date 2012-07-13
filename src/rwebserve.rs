@@ -20,6 +20,9 @@ import rsrc_exists = configuration::rsrc_exists; export rsrc_exists;
 import initialize_config = configuration::initialize_config; export initialize_config;
 import route = configuration::route; export route;
 
+import imap = imap::imap; export imap;
+import imap_methods = imap::imap_methods; export imap_methods;
+
 import start = server::start; export start;
 
 import open_sse = sse::open_sse; export open_sse;

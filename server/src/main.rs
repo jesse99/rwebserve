@@ -2,6 +2,7 @@ import io;
 import io::writer_util;
 import std::getopts::*;
 import std::map::hashmap;
+import rwebserve::imap::imap_methods;
 import server = rwebserve;
 
 type options = {root: str, admin: bool};
@@ -185,8 +186,10 @@ fn manage_state() -> state_chan
 // Each client connection that hits /uptime will cause an instance of this task to run. When
 // manage_state tells us that the world has changed we push the new world (an int in
 // this case) out to the client.
-fn uptime_sse(registrar: state_chan, push: server::push_chan) -> server::control_chan
+fn uptime_sse(registrar: state_chan, request: server::request, push: server::push_chan) -> server::control_chan
 {
+	let seconds = request.params.get("units") == "s";
+	
 	do spawn_threaded_listener(2)
 	|control_port: server::control_port|
 	{
@@ -204,7 +207,16 @@ fn uptime_sse(registrar: state_chan, push: server::push_chan) -> server::control
 			{
 				either::left(new_time)
 				{
-					time = new_time;
+					// To help test the request code we can push uptimes as
+					// seconds or minutes based on a query string.
+					if seconds
+					{
+						time = new_time;
+					}
+					else
+					{
+						time = new_time/60;
+					}
 					comm::send(push, #fmt["retry: 5000\ndata: %?\n\n", time]);
 				}
 				either::right(server::refresh_event)
@@ -233,7 +245,7 @@ fn main(args: ~[str])
 	// a view handler (in this case we're only communicating options.admin so
 	// using settings would be simpler).
 	let home: server::response_handler = |settings, request, response| {home_view(settings, options, request, response)};
-	let up: server::open_sse = |_settings, _request, push| {uptime_sse(registrar, push)};
+	let up: server::open_sse = |_settings, request, push| {uptime_sse(registrar, request, push)};
 	
 	let config = {
 		hosts: ~["localhost", "10.6.210.132"],

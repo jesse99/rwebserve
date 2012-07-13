@@ -5,7 +5,7 @@ window.onload = function()
 	var timeElement = document.getElementById('uptime');
 	timeElement.innerHTML = "whatever";
 	
-	var source = new EventSource('/uptime');
+	var source = new EventSource('/uptime?units=s');
 	source.addEventListener('message', function(event)
 	{
 		console.log('> received ' + event.data);

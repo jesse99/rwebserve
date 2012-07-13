@@ -1,9 +1,10 @@
-/// Simple immutable sendable map.
+/// Simple immutable and sendable multimap.
 import option::extensions;
 
 type imap<K: copy, V: copy> = ~[(K, V)];
 
 // TODO: Replace this with something better. Frozen hashmap?
+// But note that this is a multimap which hashmap doesn't currently support.
 // Would be faster if we used a binary search, but that won't matter
 // for our use cases.
 impl imap_methods<K: copy, V: copy> for imap<K, V>
@@ -18,6 +19,7 @@ impl imap_methods<K: copy, V: copy> for imap<K, V>
 		vec::find(self, |e| {tuple::first(e) == key}).is_some()
 	}
 	
+	/// Returns value for the first matching key or fails if no key was found.
 	fn get(key: K) -> V
 	{
 		alt vec::find(self, |e| {tuple::first(e) == key})
@@ -29,6 +31,23 @@ impl imap_methods<K: copy, V: copy> for imap<K, V>
 			option::none
 			{
 				fail(#fmt["Failed to find %?", key]);
+			}
+		}
+	}
+	
+	/// Returns all values matching key.
+	fn get_all(key: K) -> ~[V]
+	{
+		do vec::filter_map(self)
+		|e|
+		{
+			if tuple::first(e) == key
+			{
+				option::some(tuple::second(e))
+			}
+			else
+			{
+				option::none
 			}
 		}
 	}

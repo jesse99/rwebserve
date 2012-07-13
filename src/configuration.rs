@@ -42,8 +42,9 @@ type config = {
 /// * method: "GET", "PUSH", "POST", etc.
 /// * local_addr: ip address of the server.
 /// * remote_addr: ip address of the client (or proxy).
-/// * path: path component of the URL.
+/// * path: path component of the URL. Note that this does not include the query string.
 /// * matches: contains entries from request_path matching a routes URI template.
+/// * params: contains entries from the query portion of the URL. Note that the keys may be duplicated.
 /// * headers: headers from the http request. Note that the names are lower cased.
 /// * body: body of the http request.
 type request = {
@@ -53,6 +54,7 @@ type request = {
 	remote_addr: str,
 	path: str,
 	matches: hashmap<str, str>,
+	params: imap::imap<str, str>,
 	headers: hashmap<str, str>,
 	body: str};
 
