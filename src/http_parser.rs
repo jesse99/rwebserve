@@ -48,7 +48,12 @@ fn decode(url: str) -> str
 			i += 1u;
 			let mut code_point = 0u;
 			
-			while i < str::len(url) && is_hex(url[i])
+			if i < str::len(url) && is_hex(url[i])
+			{
+				code_point = (code_point << 4) | to_int(url[i]);
+				i += 1u;
+			}
+			if i < str::len(url) && is_hex(url[i])
 			{
 				code_point = (code_point << 4) | to_int(url[i]);
 				i += 1u;
@@ -257,6 +262,25 @@ fn test_encoded_url()
 		result::ok(value)
 		{
 			assert equal(value.url, "/path with spaces");
+		}
+		result::err(mesg)
+		{
+			io::stderr().write_line(mesg);
+			assert false;
+		}
+	}
+}
+
+#[test]
+fn test_encoded_url2()
+{
+	let p = make_parser();
+	
+	alt p("GET /path%2099with%20digits HTTP/1.1\r\n\r\n")
+	{
+		result::ok(value)
+		{
+			assert equal(value.url, "/path 99with digits");
 		}
 		result::err(mesg)
 		{
