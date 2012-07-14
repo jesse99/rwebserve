@@ -117,7 +117,7 @@ fn home_view(_settings: hashmap<str, str>, options: options, _request: server::r
 
 fn greeting_view(_settings: hashmap<str, str>, request: server::request, response: server::response) -> server::response
 {
-	response.context.insert("user-name", mustache::str(request.matches.get("name")));
+	response.context.insert("user-name", mustache::str(@request.matches.get("name")));
 	{template: "hello.html" with response}
 }
 
