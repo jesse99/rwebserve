@@ -81,7 +81,7 @@ fn request_parser() -> parser<http_request>
 	let crnl = "\r\n".lit();
 	
 	// url := [^ ]+
-	let url = match1({|c| c != ' '}).err("URL");
+	let url = match1({|c| c != ' '});
 	
 	// version := integer '.' integer
 	let version = do seq3(decimal_number(), ".".lit(), decimal_number())

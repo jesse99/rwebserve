@@ -222,10 +222,10 @@ fn make_initial_response(config: conn_config, status_code: str, status_mesg: str
 	}
 	
 	let context = std::map::str_hash();
-	context.insert("request-path", mustache::str(request.path));
-	context.insert("status-code", mustache::str(status_code));
-	context.insert("status-mesg", mustache::str(status_mesg));
-	context.insert("request-version", mustache::str(request.version));
+	context.insert("request-path", mustache::str(@request.path));
+	context.insert("status-code", mustache::str(@status_code));
+	context.insert("status-mesg", mustache::str(@status_mesg));
+	context.insert("request-version", mustache::str(@request.version));
 	
 	{status: status_code + " " + status_mesg, headers: headers, body: "", template: "", context: context}
 }
@@ -293,7 +293,7 @@ fn process_template(config: conn_config, response: response, request: request) -
 			{
 				// We failed to load the template so use the hard-coded config.read_error body.
 				let context = std::map::str_hash();
-				context.insert("request-path", mustache::str(request.path));
+				context.insert("request-path", mustache::str(@request.path));
 				let body = mustache::render_str(config.read_error, context);
 				
 				if config.server_info != "unit test"
@@ -310,7 +310,7 @@ fn process_template(config: conn_config, response: response, request: request) -
 		// context to expand the template.
 		let base_dir = path::dirname(response.template);
 		let base_url = #fmt["http://%s:%?/%s/", request.local_addr, config.port, base_dir];
-		response.context.insert("base-path", mustache::str(base_url));
+		response.context.insert("base-path", mustache::str(@base_url));
 		
 		(response, mustache::render_str(body, response.context))
 	}
