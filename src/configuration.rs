@@ -113,7 +113,7 @@ type route = {method: str, template: ~[uri_template::component], mime_type: str,
 /// * static_types is given entries for audio, image, video, and text extensions.
 /// * read_error is initialized to a reasonable English language html error message.
 /// * load_rsrc: is initialized to io::read_whole_file_str.
-/// * valid_rsrc: is initialized to os::path_exists.
+/// * valid_rsrc: is initialized to os::path_exists && !os::path_is_dir.
 fn initialize_config() -> config
 {
 	{
@@ -160,8 +160,13 @@ fn initialize_config() -> config
 
 <p>Could not read URL {{request-path}}.</p>",
 	load_rsrc: io::read_whole_file_str,
-	valid_rsrc: os::path_exists,
+	valid_rsrc: is_valid_rsrc,
 	settings: ~[]}
+}
+
+fn is_valid_rsrc(path: str) -> bool
+{
+	os::path_exists(path) && !os::path_is_dir(path)
 }
 
 // Default config.static view handler.
