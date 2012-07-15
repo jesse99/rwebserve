@@ -43,7 +43,7 @@ fn handle_connection(++config: config, fd: libc::c_int, local_addr: str, remote_
 		fail;
 	}
 	
-	do task::spawn {read_requests(fd, sch);}
+	do task::spawn {read_requests(remote_addr, fd, sch);}
 	loop
 	{
 		#debug["-----------------------------------------------------------"];
@@ -69,7 +69,7 @@ fn handle_connection(++config: config, fd: libc::c_int, local_addr: str, remote_
 	}
 }
 
-fn read_requests(fd: libc::c_int, poke: comm::chan<option::option<http_request>>)
+fn read_requests(remote_addr: str, fd: libc::c_int, poke: comm::chan<option::option<http_request>>)
 {
 	let sock = @socket::socket_handle(fd);
 	let parse = make_parser();
@@ -91,7 +91,7 @@ fn read_requests(fd: libc::c_int, poke: comm::chan<option::option<http_request>>
 						}
 						else
 						{
-							#info["Ignoring %s and %s", headers, body];
+							#info["Ignoring %s and %s from %s", headers, body, remote_addr];
 						}
 					}
 					else
@@ -101,7 +101,7 @@ fn read_requests(fd: libc::c_int, poke: comm::chan<option::option<http_request>>
 				}
 				result::err(mesg)
 				{
-					#error["Couldn't parse: %s", mesg];
+					#error["Couldn't parse: '%s' from %s", mesg, remote_addr];
 					#error["%s", headers];
 				}
 			}
@@ -110,7 +110,7 @@ fn read_requests(fd: libc::c_int, poke: comm::chan<option::option<http_request>>
 		{
 			// Client closed connection or there was some sort of error
 			// (in which case the client will re-open a connection).
-			#info["detached from client"];
+			#info["detached from %s", remote_addr];
 			comm::send(poke, option::none);
 			break;
 		}
