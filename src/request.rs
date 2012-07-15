@@ -143,7 +143,33 @@ fn find_handler(+config: conn_config, method: str, request_path: str, types: ~[s
 		#info["responding with %s %s", status_code, status_mesg];
 	}
 	
-	// Find the first matching route.
+	// See if the url matches a file under the resource root (i.e. the url can't have too many .. components).
+	if option::is_none(handler)
+	{
+		let path = path::normalize(path::connect(config.resources_root, request_path));
+		if str::starts_with(path, config.resources_root)
+		{
+			if config.valid_rsrc(path)
+			{
+				let mime_type = path_to_type(config, request_path);
+				if vec::contains(types, "*/*") || vec::contains(types, mime_type)
+				{
+					result_type = mime_type + "; charset=UTF-8";
+					handler = option::some(copy(config.static));
+				}
+			}
+		}
+		else
+		{
+			status_code = "403";			// don't allow access to files not under resources_root
+			status_mesg = "Forbidden";
+			let (_, _, _, h, _) = find_handler(copy(config), method, "forbidden.html", ["types/html"]/~, version);
+			handler = option::some(h);
+			#info["responding with %s %s (path wasn't under resources_root)", status_code, status_mesg];
+		}
+	}
+	
+	// Then look for the first matching route.
 	if option::is_none(handler)
 	{
 		for vec::each(config.route_list)
@@ -167,32 +193,6 @@ fn find_handler(+config: conn_config, method: str, request_path: str, types: ~[s
 					}
 				}
 			}
-		}
-	}
-	
-	// See if the url matches a file under the resource root (i.e. the url can't have too many .. components).
-	if option::is_none(handler)
-	{
-		let path = path::normalize(path::connect(config.resources_root, request_path));
-		if str::starts_with(path, config.resources_root)
-		{
-			if config.valid_rsrc(path)
-			{
-				let mime_type = path_to_type(config, request_path);
-				if vec::contains(types, "*/*") || vec::contains(types, mime_type)
-				{
-					result_type = mime_type + "; charset=UTF-8";
-					handler = option::some(copy(config.static));
-				}
-			}
-		}
-		else
-		{
-			status_code = "403";			// don't allow access to files not under resources_root
-			status_mesg = "Forbidden";
-			let (_, _, _, h, _) = find_handler(copy(config), method, "forbidden.html", ["types/html"]/~, version);
-			handler = option::some(h);
-			#info["responding with %s %s (path wasn't udner resources_root)", status_code, status_mesg];
 		}
 	}
 	
