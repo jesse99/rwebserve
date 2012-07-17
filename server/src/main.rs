@@ -245,6 +245,11 @@ fn main(args: ~[str])
 	// a view handler (in this case we're only communicating options.admin so
 	// using settings would be simpler).
 	let home: server::response_handler = |settings, request, response| {home_view(settings, options, request, response)};
+	let bail: server::response_handler = |_settings, _request, _response|
+	{
+		#info["received shutdown request"];
+		libc::exit(0)
+	};
 	let up: server::open_sse = |_settings, request, push| {uptime_sse(registrar, request, push)};
 	
 	let config = {
@@ -254,10 +259,12 @@ fn main(args: ~[str])
 		resources_root: options.root,
 		routes: ~[
 			("GET", "/", "home"),
+			("GET", "/shutdown", "shutdown"),		// TODO: enable this via debug cfg (or maybe via a command line option)
 			("GET", "/hello/{name}", "greeting"),
 		],
 		views: ~[
 			("home",  home),
+			("shutdown",  bail),
 			("greeting", greeting_view),
 		],
 		sse: ~[("/uptime", up)],

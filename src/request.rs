@@ -96,12 +96,7 @@ fn make_header_and_body(response: response, body: str) -> (str, str)
 
 fn get_body(config: conn_config, request: request, types: ~[str]) -> (response, str)
 {
-	if request.path == "/shutdown"		// TODO: enable this via debug cfg (or maybe via a command line option)
-	{
-		#info["received shutdown request"];
-		libc::exit(0_i32)
-	}
-	else if vec::contains(types, "text/event-stream")
+	if vec::contains(types, "text/event-stream")
 	{
 		process_sse(config, request)
 	}
