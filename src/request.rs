@@ -11,7 +11,7 @@ export process_request, make_header_and_body, make_initial_response;
 // include last-modified and maybe etag
 fn process_request(config: conn_config, request: http_request, local_addr: str, remote_addr: str) -> (str, str)
 {
-	#info["Servicing %s for %s", request.method, request.url];
+	#info["Servicing %s for %s", request.method, truncate_str(request.url, 80)];
 	
 	let version = #fmt["%d.%d", request.major_version, request.minor_version];
 	let (path, params) = parse_url(request.url);

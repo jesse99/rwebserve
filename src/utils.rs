@@ -48,6 +48,18 @@ fn dump_string(title: str, text: str)
 	}
 }
 
+fn truncate_str(s: str, max_chars: uint) -> str
+{
+	if s.len() > max_chars
+	{
+		s.substr(0, max_chars - 3) + "..."
+	}
+	else
+	{
+		s
+	}
+}
+
 #[cfg(test)]
 fn check_strs(actual: str, expected: str) -> bool
 {

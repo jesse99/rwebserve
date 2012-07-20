@@ -91,7 +91,7 @@ fn read_requests(remote_addr: str, fd: libc::c_int, poke: comm::chan<option::opt
 						}
 						else
 						{
-							#info["Ignoring %s and %s from %s", headers, body, remote_addr];
+							#info["Ignoring %s and %s from %s", headers, utils::truncate_str(body, 80), remote_addr];
 						}
 					}
 					else
@@ -203,7 +203,7 @@ fn read_body(sock: @socket::socket_handle, content_length: str) -> str unsafe
 	if str::is_utf8(buffer)
 	{
 		let body = str::unsafe::from_buf(vec::unsafe::to_ptr(buffer));
-		#debug["body: %s", body];	// note that the log macros truncate long strings 
+		#debug["body: %s", body];	// note that the log macros truncate really long strings 
 		body
 	}
 	else
