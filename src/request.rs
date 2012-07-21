@@ -34,7 +34,23 @@ fn parse_url(url: str) -> (str, imap::imap<str, str>)
 		{
 			let query = str::slice(url, i+1, str::len(url));
 			let parts = str::split_char(query, '&');
-			let params = do vec::map(parts) |p| {str::split_char(p, '=')};
+			
+			let params = do vec::map(parts)
+			|p|
+			{
+				alt str::find_char(p, '=')
+				{
+					option::some(i)
+					{
+						~[p.slice(0, i), p.slice(i+1, p.len())]
+					}
+					option::none
+					{
+						~[p]		// bad field
+					}
+				}
+			};
+			
 			if do vec::all(params) |p| {vec::len(p) == 2}
 			{
 				(str::slice(url, 0, i), do vec::map(params) |p| {(p[0], p[1])})
@@ -43,6 +59,7 @@ fn parse_url(url: str) -> (str, imap::imap<str, str>)
 			{
 				// It's not a valid query string so we'll just let the server handle it.
 				// Presumbably it won't match any routes so we'll get an error then.
+				#error["invalid query string"];
 				(url, ~[])
 			}
 		}
