@@ -1,6 +1,6 @@
 // http://www.w3.org/Protocols/rfc2616/rfc2616.html
 import socket;
-import connection::*;
+import connection::{handle_connection};
 
 export start;
 
@@ -46,7 +46,7 @@ fn start(+config: config)
 	}
 }
 
-fn attach(+config: config, host: str, shandle: @socket::socket_handle) -> result<@socket::socket_handle, str>
+fn attach(+config: config, host: ~str, shandle: @socket::socket_handle) -> result<@socket::socket_handle, ~str>
 {
 	#info["server is listening for new connections on %s:%?", host, config.port];
 	do result::chain(socket::accept(shandle))

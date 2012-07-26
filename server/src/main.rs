@@ -2,38 +2,38 @@ import io;
 import io::writer_util;
 import std::getopts::*;
 import std::map::hashmap;
-import rwebserve::imap::imap_methods;
+import rwebserve::imap::{immutable_map, imap_methods};
 import server = rwebserve;
 
-type options = {root: str, admin: bool};
+type options = {root: ~str, admin: bool};
 
 // str constants aren't supported yet.
 // TODO: get this (somehow) from the link attribute in the rc file (going the other way
 // doesn't work because vers in the link attribute has to be a literal)
-fn get_version() -> str
+fn get_version() -> ~str
 {
-	"0.1"
+	~"0.1"
 }
 
 fn print_usage()
 {
 	io::println(#fmt["server %s - sample rrest server", get_version()]);
-	io::println("");
-	io::println("./server [options] --root=<dir>");
-	io::println("--admin      allows web clients to shut the server down");
-	io::println("-h, --help   prints this message and exits");
-	io::println("--root=DIR   path to the directory containing html files");
-	io::println("--version    prints the server version number and exits");
+	io::println(~"");
+	io::println(~"./server [options] --root=<dir>");
+	io::println(~"--admin      allows web clients to shut the server down");
+	io::println(~"-h, --help   prints this message and exits");
+	io::println(~"--root=DIR   path to the directory containing html files");
+	io::println(~"--version    prints the server version number and exits");
 } 
 
-fn parse_command_line(args: [str]/&) -> options
+fn parse_command_line(args: &[~str]) -> options
 {
 	let opts = ~[
-		optflag("admin"),
-		reqopt("root"),
-		optflag("h"),
-		optflag("help"),
-		optflag("version")
+		optflag(~"admin"),
+		reqopt(~"root"),
+		optflag(~"h"),
+		optflag(~"help"),
+		optflag(~"version")
 	];
 	
 	let mut t = ~[];
@@ -52,12 +52,12 @@ fn parse_command_line(args: [str]/&) -> options
 		result::ok(m) {copy(m)}
 		result::err(f) {io::stderr().write_line(fail_str(f)); libc::exit(1_i32)}
 	};
-	if opt_present(match, "h") || opt_present(match, "help")
+	if opt_present(match, ~"h") || opt_present(match, ~"help")
 	{
 		print_usage();
 		libc::exit(0_i32);
 	}
-	else if opt_present(match, "version")
+	else if opt_present(match, ~"version")
 	{
 		io::println(#fmt["server %s", get_version()]);
 		libc::exit(0_i32);
@@ -67,7 +67,7 @@ fn parse_command_line(args: [str]/&) -> options
 		io::stderr().write_line("Positional arguments are not allowed.");
 		libc::exit(1_i32);
 	}
-	{root: opt_str(match, "root"), admin: opt_present(match, "admin")}
+	{root: opt_str(match, ~"root"), admin: opt_present(match, ~"admin")}
 }
 
 fn validate_options(options: options)
@@ -79,7 +79,7 @@ fn validate_options(options: options)
 	}
 }
 
-fn process_command_line(args: ~[str]) -> str
+fn process_command_line(args: ~[~str]) -> ~str
 {
 	if vec::len(args) != 2u || !str::starts_with(args[1], "--root=")
 	{
@@ -109,22 +109,22 @@ fn spawn_threaded_listener<A:send>(num_threads: uint, +block: fn~ (comm::port<A>
 	comm::recv(channel_port)
 }
 
-fn home_view(_settings: hashmap<str, str>, options: options, _request: server::request, response: server::response) -> server::response
+fn home_view(_settings: hashmap<~str, ~str>, options: options, _request: server::request, response: server::response) -> server::response
 {
-	response.context.insert("admin", mustache::bool(options.admin));
-	{template: "home.html" with response}
+	response.context.insert(~"admin", mustache::bool(options.admin));
+	{template: ~"home.html" with response}
 }
 
-fn greeting_view(_settings: hashmap<str, str>, request: server::request, response: server::response) -> server::response
+fn greeting_view(_settings: hashmap<~str, ~str>, request: server::request, response: server::response) -> server::response
 {
-	response.context.insert("user-name", mustache::str(@request.matches.get("name")));
-	{template: "hello.html" with response}
+	response.context.insert(~"user-name", mustache::str(@request.matches.get(~"name")));
+	{template: ~"hello.html" with response}
 }
 
 enum state_mesg
 {
-	add_listener(str, comm::chan<int>),	// str is used to identify the listener
-	remove_listener(str),
+	add_listener(~str, comm::chan<int>),	// str is used to identify the listener
+	remove_listener(~str),
 	shutdown,
 }
 
@@ -188,7 +188,7 @@ fn manage_state() -> state_chan
 // this case) out to the client.
 fn uptime_sse(registrar: state_chan, request: server::request, push: server::push_chan) -> server::control_chan
 {
-	let seconds = request.params.get("units") == "s";
+	let seconds = request.params.get(~"units") == ~"s";
 	
 	do spawn_threaded_listener(2)
 	|control_port: server::control_port|
@@ -234,7 +234,7 @@ fn uptime_sse(registrar: state_chan, request: server::request, push: server::pus
 	}
 }
 
-fn main(args: ~[str])
+fn main(args: ~[~str])
 {
 	let options = parse_command_line(args);
 	validate_options(options);
@@ -253,22 +253,22 @@ fn main(args: ~[str])
 	let up: server::open_sse = |_settings, request, push| {uptime_sse(registrar, request, push)};
 	
 	let config = {
-		hosts: ~["localhost", "10.6.210.132"],
+		hosts: ~[~"localhost", ~"10.6.210.132"],
 		port: 8088_u16,
-		server_info: "sample rrest server " + get_version(),
+		server_info: ~"sample rrest server " + get_version(),
 		resources_root: options.root,
 		routes: ~[
-			("GET", "/", "home"),
-			("GET", "/shutdown", "shutdown"),		// TODO: enable this via debug cfg (or maybe via a command line option)
-			("GET", "/hello/{name}", "greeting"),
+			(~"GET", ~"/", ~"home"),
+			(~"GET", ~"/shutdown", ~"shutdown"),		// TODO: enable this via debug cfg (or maybe via a command line option)
+			(~"GET", ~"/hello/{name}", ~"greeting"),
 		],
 		views: ~[
-			("home",  home),
-			("shutdown",  bail),
-			("greeting", greeting_view),
+			(~"home",  home),
+			(~"shutdown",  bail),
+			(~"greeting", greeting_view),
 		],
-		sse: ~[("/uptime", up)],
-		settings: ~[("debug",  "true")]
+		sse: ~[(~"/uptime", up)],
+		settings: ~[(~"debug",  ~"true")]
 		with server::initialize_config()};
 	
 	server::start(config);

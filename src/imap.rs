@@ -3,11 +3,23 @@ import option::extensions;
 
 type imap<K: copy, V: copy> = ~[(K, V)];
 
+trait immutable_map<K: copy, V: copy>
+{
+	fn size() -> uint;
+	fn contains_key(key: K) -> bool;
+	fn get(key: K) -> V;
+	fn get_all(key: K) -> ~[V];
+	fn find(key: K) -> option<V>;
+	fn each(block: fn(K, V) -> bool);
+	fn each_key(block: fn(K) -> bool);
+	fn each_value(block: fn(V) -> bool);
+}
+
 // TODO: Replace this with something better. Frozen hashmap?
 // But note that this is a multimap which hashmap doesn't currently support.
 // Would be faster if we used a binary search, but that won't matter
 // for our use cases.
-impl imap_methods<K: copy, V: copy> for imap<K, V>
+impl imap_methods<K: copy, V: copy> of immutable_map<K, V> for imap<K, V>
 {
 	fn size() -> uint
 	{
@@ -16,17 +28,17 @@ impl imap_methods<K: copy, V: copy> for imap<K, V>
 	
 	fn contains_key(key: K) -> bool
 	{
-		vec::find(self, |e| {tuple::first(e) == key}).is_some()
+		vec::find(self, |e| {e.first() == key}).is_some()
 	}
 	
 	/// Returns value for the first matching key or fails if no key was found.
 	fn get(key: K) -> V
 	{
-		alt vec::find(self, |e| {tuple::first(e) == key})
+		alt vec::find(self, |e| {e.first() == key})
 		{
 			option::some(e)
 			{
-				tuple::second(e)
+				e.second()
 			}
 			option::none
 			{
@@ -41,9 +53,9 @@ impl imap_methods<K: copy, V: copy> for imap<K, V>
 		do vec::filter_map(self)
 		|e|
 		{
-			if tuple::first(e) == key
+			if e.first() == key
 			{
-				option::some(tuple::second(e))
+				option::some(e.second())
 			}
 			else
 			{
@@ -54,11 +66,11 @@ impl imap_methods<K: copy, V: copy> for imap<K, V>
 	
 	fn find(key: K) -> option<V>
 	{
-		alt vec::find(self, |e| {tuple::first(e) == key})
+		alt vec::find(self, |e| {e.first() == key})
 		{
 			option::some(e)
 			{
-				option::some(tuple::second(e))
+				option::some(e.second())
 			}
 			option::none
 			{
@@ -72,7 +84,7 @@ impl imap_methods<K: copy, V: copy> for imap<K, V>
 		for vec::each(self)
 		|e|
 		{
-			if !block(tuple::first(e), tuple::second(e))
+			if !block(e.first(), e.second())
 			{
 				break;
 			}
@@ -84,7 +96,7 @@ impl imap_methods<K: copy, V: copy> for imap<K, V>
 		for vec::each(self)
 		|e|
 		{
-			if !block(tuple::first(e))
+			if !block(e.first())
 			{
 				break;
 			}
@@ -96,7 +108,7 @@ impl imap_methods<K: copy, V: copy> for imap<K, V>
 		for vec::each(self)
 		|e|
 		{
-			if !block(tuple::second(e))
+			if !block(e.second())
 			{
 				break;
 			}

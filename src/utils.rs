@@ -1,6 +1,6 @@
 /// Misc functions used internally.
 
-fn dump_string(title: str, text: str)
+fn dump_string(title: ~str, text: ~str)
 {
 	io::println(#fmt["%s has %? bytes:", title, str::len(text)]);
 	let mut i = 0u;
@@ -17,7 +17,7 @@ fn dump_string(title: str, text: str)
 			k += 1u;
 		}
 		
-		io::print("  ");
+		io::print(~"  ");
 		
 		// Print the second 8 bytes as hex.
 		k = 0u;
@@ -29,13 +29,13 @@ fn dump_string(title: str, text: str)
 		
 		// Print the printable 16 characters as characters and
 		// the unprintable characters as '.'.
-		io::print("  ");
+		io::print(~"  ");
 		k = 0u;
 		while k < 16u && i < str::len(text)
 		{
 			if text[i] < ' ' as u8 || text[i] > '~' as u8
 			{
-				io::print(".");
+				io::print(~".");
 			}
 			else
 			{
@@ -44,11 +44,11 @@ fn dump_string(title: str, text: str)
 			k += 1u;
 			i += 1u;
 		}
-		io::println("");
+		io::println(~"");
 	}
 }
 
-fn truncate_str(s: str, max_chars: uint) -> str
+fn truncate_str(s: ~str, max_chars: uint) -> ~str
 {
 	if s.len() > max_chars
 	{
@@ -61,7 +61,7 @@ fn truncate_str(s: str, max_chars: uint) -> str
 }
 
 #[cfg(test)]
-fn check_strs(actual: str, expected: str) -> bool
+fn check_strs(actual: ~str, expected: ~str) -> bool
 {
 	if actual != expected
 	{
