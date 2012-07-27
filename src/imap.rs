@@ -1,4 +1,4 @@
-/// Simple immutable and sendable multimap.
+//! Simple immutable and sendable multimap.
 import option::extensions;
 
 type imap<K: copy, V: copy> = ~[(K, V)];

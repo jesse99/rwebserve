@@ -1,4 +1,4 @@
-/// The module responsible for communication using a persistent connection to a client.
+//! The module responsible for communication using a persistent connection to a client.
 import socket;
 import http_parser::*;
 import request::{process_request, make_header_and_body};

@@ -1,4 +1,4 @@
-/// Handles an incoming request from a client connection and sends a response.
+//! Handles an incoming request from a client connection and sends a response.
 import imap::imap_methods;
 import connection::{conn_config, config_to_conn};
 import http_parser::{http_request};
@@ -642,18 +642,18 @@ fn bad_template()
 fn query_strings()
 {
 	let (path, params) = parse_url(~"/some/url");
-	assert check_strs(path, ~"/some/url");
-	assert check_vectors(params, ~[]);
+	assert utils::check_strs(path, ~"/some/url");
+	assert utils::check_vectors(params, ~[]);
 	
 	let (path, params) = parse_url(~"/some/url?badness");
-	assert check_strs(path, ~"/some/url?badness");
-	assert check_vectors(params, ~[]);
+	assert utils::check_strs(path, ~"/some/url?badness");
+	assert utils::check_vectors(params, ~[]);
 	
 	let (path, params) = parse_url(~"/some?name=value");
-	assert check_strs(path, ~"/some");
-	assert check_vectors(params, ~[(~"name", ~"value")]);
+	assert utils::check_strs(path, ~"/some");
+	assert utils::check_vectors(params, ~[(~"name", ~"value")]);
 	
 	let (path, params) = parse_url(~"/some?name=value&foo=bar");
-	assert check_strs(path, ~"/some");
-	assert check_vectors(params, ~[(~"name", ~"value"), (~"foo", ~"bar")]);
+	assert utils::check_strs(path, ~"/some");
+	assert utils::check_vectors(params, ~[(~"name", ~"value"), (~"foo", ~"bar")]);
 }

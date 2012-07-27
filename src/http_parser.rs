@@ -1,6 +1,6 @@
-//import imap::*;
 import rparse::*;
 import std::map;
+import imap::*;
 
 export http_request, make_parser;
 
@@ -153,7 +153,7 @@ fn test_get_method1()
 			assert equal(value.major_version, 1);
 			assert equal(value.minor_version, 1);
 			assert equal(value.url, ~"/");
-			assert equal(value.headers.size(), 0u);
+			assert equal(value.headers.len(), 0u);
 		}
 		result::err(mesg)
 		{
@@ -176,7 +176,7 @@ fn test_get_method2()
 			assert equal(value.major_version, 1);
 			assert equal(value.minor_version, 1);
 			assert equal(value.url, ~"/");
-			assert equal(value.headers.size(), 6u);
+			assert equal(value.headers.len(), 6u);
 			
 			assert equal(value.headers.get(~"host"), ~"localhost:8080");
 			assert equal(value.headers.get(~"user-agent"), ~"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:11.0) Gecko/20100101 Firefox/11.0");

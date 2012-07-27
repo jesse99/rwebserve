@@ -1,4 +1,4 @@
-/// Misc functions used internally.
+//! Misc functions used internally.
 
 fn dump_string(title: ~str, text: ~str)
 {

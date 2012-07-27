@@ -1,4 +1,4 @@
-/// Types and functions used to configure rwebserve.
+//! Types and functions used to configure rwebserve.
 
 /// Configuration information for the web server.
 /// 

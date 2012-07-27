@@ -1,4 +1,4 @@
-/// Public API for rwebserve.
+//! Public API for rwebserve.
 
 // This is a convenience for internal modules.
 import option = option::option;
