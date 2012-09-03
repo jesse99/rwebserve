@@ -66,6 +66,7 @@ fn process_sse(config: conn_config, request: request) -> (response, ~str)
 	(response, ~"\n\n")
 }
 
+// TODO: Chrome, at least, doesn't seem to close EventSources so we need to time these out.
 fn open_sse(config: conn_config, request: request, push_data: push_chan) -> bool
 {
 	alt config.sse_openers.find(request.path)

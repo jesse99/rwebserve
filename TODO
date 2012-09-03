@@ -11,6 +11,12 @@ tcpdump -i lo0 -w packets.pcap tcp
 * Need a way for users to generate URLs:
 	- also need to encode them if they have bad chars
 * Make sure that the date header is OK. See section 3.3.1
+* Post should return 200 or 204
+* Put should return 200 or 201 or 204 (see 9.6)
+   - could set status to zero and assert that it is set
+   - or maybe use a status enum
+* 201 requires location header
+* Review status 411 and 415
 * Work on http support:
 	- timeout connections
 	- handle continue, 8.2.3
