@@ -1,9 +1,9 @@
 //! The module responsible for communication using a persistent connection to a client.
-import socket;
-import http_parser::*;
-import request::{process_request, make_header_and_body};
-import imap::{immutable_map, imap_methods};
-import sse;
+use socket;
+use http_parser::*;
+use request::{process_request, make_header_and_body};
+use imap::{immutable_map, imap_methods};
+use sse;
 
 export handle_connection, conn_config, config_to_conn;
 
@@ -39,27 +39,27 @@ fn handle_connection(++config: config, fd: libc::c_int, local_addr: ~str, remote
 	let err = validate_config(iconfig);
 	if str::is_not_empty(err)
 	{
-		#error["Invalid config: %s", err];
+		error!("Invalid config: %s", err);
 		fail;
 	}
 	
 	do task::spawn {read_requests(remote_addr, fd, sch);}
 	loop
 	{
-		#debug["-----------------------------------------------------------"];
-		alt comm::select2(sport, eport)
+		debug!("-----------------------------------------------------------");
+		match comm::select2(sport, eport)
 		{
-			either::left(option::some(request))
+			either::Left(option::Some(request)) =>
 			{
 				let (header, body) = process_request(iconfig, request, local_addr, remote_addr);
 				write_response(sock, header, body);
 			}
-			either::left(option::none)
+			either::Left(option::None) =>
 			{
 				sse::close_sses(iconfig);
 				break;
 			}
-			either::right(body)
+			either::Right(body) =>
 			{
 				let response = sse::make_response(iconfig);
 				let (_, body) = make_header_and_body(response, body);
@@ -69,7 +69,7 @@ fn handle_connection(++config: config, fd: libc::c_int, local_addr: ~str, remote
 	}
 }
 
-fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::chan<option::option<http_request>>)
+fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::chan<option::Option<http_request>>)
 {
 	let sock = socket::create_socket(fd);		// socket::socket_handle(fd);
 	let parse = make_parser();
@@ -78,31 +78,31 @@ fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::chan<option::op
 		let headers = read_headers(sock);
 		if str::is_not_empty(headers)
 		{
-			alt parse(headers)
+			match parse(headers)
 			{
-				result::ok(request)
+				result::Ok(request) =>
 				{
 					if request.headers.contains_key(~"content-length")
 					{
 						let body = read_body(sock, request.headers.get(~"content-length"));
 						if str::is_not_empty(body)
 						{
-							comm::send(poke, option::some({body: body with request}));
+							comm::send(poke, option::Some({body: body , .. request}));
 						}
 						else
 						{
-							#info["Ignoring %s and %s from %s", headers, utils::truncate_str(body, 80), remote_addr];
+							info!("Ignoring %s and %s from %s", headers, utils::truncate_str(body, 80), remote_addr);
 						}
 					}
 					else
 					{
-						comm::send(poke, option::some(request));
+						comm::send(poke, option::Some(request));
 					}
 				}
-				result::err(mesg)
+				result::Err(mesg) =>
 				{
-					#error["Couldn't parse: '%s' from %s", mesg, remote_addr];
-					#error["%s", headers];
+					error!("Couldn't parse: '%s' from %s", mesg, remote_addr);
+					error!("%s", headers);
 				}
 			}
 		}
@@ -110,8 +110,8 @@ fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::chan<option::op
 		{
 			// Client closed connection or there was some sort of error
 			// (in which case the client will re-open a connection).
-			#info["detached from %s", remote_addr];
-			comm::send(poke, option::none);
+			info!("detached from %s", remote_addr);
+			comm::send(poke, option::None);
 			break;
 		}
 	}
@@ -129,16 +129,16 @@ fn read_headers(sock: @socket::socket_handle) -> ~str unsafe
 	
 	while !found_headers(buffer) 
 	{
-		alt socket::recv(sock, 1u)			// TODO: need a timeout
+		match socket::recv(sock, 1u)			// TODO: need a timeout
 		{
-			result::ok(result)
+			result::Ok(result) =>
 			{
 				vec::push(buffer, result.buffer[0]);
 			}
-			result::err(mesg)
+			result::Err(mesg) =>
 			{
-				#warn["read_headers failed with error: %s", mesg];
-				ret ~"";
+				warn!("read_headers failed with error: %s", mesg);
+				return ~"";
 			}
 		}
 	}
@@ -148,12 +148,12 @@ fn read_headers(sock: @socket::socket_handle) -> ~str unsafe
 	{
 		let mut headers = str::unsafe::from_buf(vec::unsafe::to_ptr(buffer));
 		str::unsafe::set_len(headers, vec::len(buffer));		// push adds garbage after the end of the actual elements (i.e. the capacity part)
-		#debug["headers: %s", headers];
+		debug!("headers: %s", headers);
 		headers
 	}
 	else
 	{
-		#error["Headers were not utf-8"];	// TODO: what does the standard say about encodings? do we need to negotiate? or at least return some error response...
+		error!("Headers were not utf-8");	// TODO: what does the standard say about encodings? do we need to negotiate? or at least return some error response...
 		~""
 	}
 }
@@ -180,9 +180,9 @@ fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str unsafe
 	
 	while vec::len(buffer) < total_len 
 	{
-		alt socket::recv(sock, total_len - vec::len(buffer))			// TODO: need a timeout
+		match socket::recv(sock, total_len - vec::len(buffer))			// TODO: need a timeout
 		{
-			result::ok(result)
+			result::Ok(result) =>
 			{
 				let mut i = 0u;
 				while i < result.bytes
@@ -191,10 +191,10 @@ fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str unsafe
 					i += 1u;
 				}
 			}
-			result::err(mesg)
+			result::Err(mesg) =>
 			{
-				#warn["read_body failed with error: %s", mesg];
-				ret ~"";
+				warn!("read_body failed with error: %s", mesg);
+				return ~"";
 			}
 		}
 	}
@@ -203,12 +203,12 @@ fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str unsafe
 	if str::is_utf8(buffer)
 	{
 		let body = str::unsafe::from_buf(vec::unsafe::to_ptr(buffer));
-		#debug["body: %s", body];	// note that the log macros truncate really long strings 
+		debug!("body: %s", body);	// note that the log macros truncate really long strings 
 		body
 	}
 	else
 	{
-		#error["Body was not utf-8"];	// TODO: what does the standard say about encodings? do we need to negotiate? or at least return some error response...
+		error!("Body was not utf-8");	// TODO: what does the standard say about encodings? do we need to negotiate? or at least return some error response...
 		~""
 	}
 }
@@ -319,7 +319,7 @@ fn validate_config(config: conn_config) -> ~str
 		fn le(&&a: ~str, &&b: ~str) -> bool {a <= b}
 		let missing_routes = std::sort::merge_sort(le, missing_routes);		// order depends on hash, but for unit tests we want to use something more consistent
 		
-		vec::push(errors, #fmt["No views for the following routes: %s", str::connect(missing_routes, ~", ")]);
+		vec::push(errors, fmt!("No views for the following routes: %s", str::connect(missing_routes, ~", ")));
 	}
 	
 	let mut missing_views = ~[];
@@ -336,18 +336,18 @@ fn validate_config(config: conn_config) -> ~str
 		fn le(&&a: ~str, &&b: ~str) -> bool {a <= b}
 		let missing_views = std::sort::merge_sort(le, missing_views);
 		
-		vec::push(errors, #fmt["No routes for the following views: %s", str::connect(missing_views, ~", ")]);
+		vec::push(errors, fmt!("No routes for the following views: %s", str::connect(missing_views, ~", ")));
 	}
 	
-	ret str::connect(errors, ~" ");
+	return str::connect(errors, ~" ");
 }
 
 
 fn to_route(input: (~str, ~str, ~str)) -> route
 {
-	alt input
+	match input
 	{
-		(method, template_str, route)
+		(method, template_str, route) =>
 		{
 			let i = str::find_char(template_str, '<');
 			let (template, mime_type) = if option::is_some(i)
@@ -375,7 +375,7 @@ fn routes_must_have_views()
 		resources_root: ~"server/html",
 		routes: ~[(~"GET", ~"/", ~"home"), (~"GET", ~"/hello", ~"greeting"), (~"GET", ~"/goodbye", ~"farewell")],
 		views: ~[(~"home",  missing_view)]
-		with initialize_config()};
+		, .. initialize_config()};
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
@@ -393,7 +393,7 @@ fn views_must_have_routes()
 		resources_root: ~"server/html",
 		routes: ~[(~"GET", ~"/", ~"home")],
 		views: ~[(~"home",  missing_view), (~"greeting",  missing_view), (~"goodbye",  missing_view)]
-		with initialize_config()};
+		, .. initialize_config()};
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);
@@ -411,7 +411,7 @@ fn root_must_have_required_files()
 		resources_root: ~"/tmp",
 		routes: ~[(~"GET", ~"/", ~"home")],
 		views: ~[(~"home",  missing_view)]
-		with initialize_config()};
+		, .. initialize_config()};
 		
 	let eport = comm::port();
 	let ech = comm::chan(eport);

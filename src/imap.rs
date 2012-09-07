@@ -1,5 +1,5 @@
 //! Simple immutable and sendable multimap.
-import option::extensions;
+use option::extensions;
 
 type imap<K: copy, V: copy> = ~[(K, V)];
 
@@ -19,7 +19,7 @@ trait immutable_map<K: copy, V: copy>
 // But note that this is a multimap which hashmap doesn't currently support.
 // Would be faster if we used a binary search, but that won't matter
 // for our use cases.
-impl imap_methods<K: copy, V: copy> of immutable_map<K, V> for imap<K, V>
+impl<K: copy, V: copy> imap<K, V> : immutable_map<K, V>
 {
 	fn size() -> uint
 	{
@@ -34,15 +34,15 @@ impl imap_methods<K: copy, V: copy> of immutable_map<K, V> for imap<K, V>
 	/// Returns value for the first matching key or fails if no key was found.
 	fn get(key: K) -> V
 	{
-		alt vec::find(self, |e| {e.first() == key})
+		match vec::find(self, |e| {e.first() == key})
 		{
-			option::some(e)
+			option::Some(e) =>
 			{
 				e.second()
 			}
-			option::none
+			option::None =>
 			{
-				fail(#fmt["Failed to find %?", key]);
+				fail(fmt!("Failed to find %?", key));
 			}
 		}
 	}
@@ -55,26 +55,26 @@ impl imap_methods<K: copy, V: copy> of immutable_map<K, V> for imap<K, V>
 		{
 			if e.first() == key
 			{
-				option::some(e.second())
+				option::Some(e.second())
 			}
 			else
 			{
-				option::none
+				option::None
 			}
 		}
 	}
 	
 	fn find(key: K) -> option<V>
 	{
-		alt vec::find(self, |e| {e.first() == key})
+		match vec::find(self, |e| {e.first() == key})
 		{
-			option::some(e)
+			option::Some(e) =>
 			{
-				option::some(e.second())
+				option::Some(e.second())
 			}
-			option::none
+			option::None =>
 			{
-				option::none
+				option::None
 			}
 		}
 	}

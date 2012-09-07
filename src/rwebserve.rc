@@ -5,19 +5,24 @@
 #[author = "Jesse Jones"];
 #[license = "MIT"];
 
-#[warn(no_non_implicitly_copyable_typarams, no_vecs_not_implicitly_copyable)];
+#[allow(non_camel_case_types)];
+#[allow(implicit_copies)];
+#[allow(deprecated_mode)];
+#[allow(non_implicitly_copyable_typarams)];
+#[allow(deprecated_pattern)];
+#[allow(unused_imports)];
 
 use std;
 use mustache (name = "mustache", vers = "0.1");
 use rparse (name = "rparse", vers = "0.5");
 use socket (name = "socket", vers = "0.1");
 
-mod configuration;
-mod connection;
-mod http_parser;
-mod imap;
-mod request;
-mod server;
-mod sse;
-mod uri_template;
+//mod configuration;
+//mod connection;
+//mod http_parser;
+//mod imap;
+//mod request;
+//mod server;
+//mod sse;
+//mod uri_template;
 mod utils;

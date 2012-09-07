@@ -1,8 +1,8 @@
 /// Server-sent event support.
 // http://www.w3.org/TR/2009/WD-html5-20090212/comms.html
 // http://dev.w3.org/html5/eventsource
-import connection::{conn_config};
-import request::{make_initial_response};
+use connection::{conn_config};
+use request::{make_initial_response};
 
 /// Called by the server to spin up a task for an sse session. Returns a
 /// channel that the server uses to communicate with the task.
@@ -43,13 +43,13 @@ fn process_sse(config: conn_config, request: request) -> (response, ~str)
 	let mut mesg = ~"OK";
 	let mut mime = ~"text/event-stream; charset=utf-8";
 	
-	alt config.sse_tasks.find(request.path)
+	match config.sse_tasks.find(request.path)
 	{
-		option::some(sse)
+		option::Some(sse) =>
 		{
 			comm::send(sse, refresh_event);
 		}
-		option::none
+		option::None =>
 		{
 			if !open_sse(config, request, config.sse_push)
 			{
@@ -69,18 +69,18 @@ fn process_sse(config: conn_config, request: request) -> (response, ~str)
 // TODO: Chrome, at least, doesn't seem to close EventSources so we need to time these out.
 fn open_sse(config: conn_config, request: request, push_data: push_chan) -> bool
 {
-	alt config.sse_openers.find(request.path)
+	match config.sse_openers.find(request.path)
 	{
-		option::some(opener)
+		option::Some(opener) =>
 		{
-			#info["opening sse for %s", request.path];
+			info!("opening sse for %s", request.path);
 			let sse = opener(config.settings, request, push_data);
 			config.sse_tasks.insert(request.path, sse);
 			true
 		}
-		option::none
+		option::None =>
 		{
-			#error["%s was not found in sse_openers", request.path];
+			error!("%s was not found in sse_openers", request.path);
 			false
 		}
 	}
@@ -88,7 +88,7 @@ fn open_sse(config: conn_config, request: request, push_data: push_chan) -> bool
 
 fn close_sses(config: conn_config)
 {
-	#info["closing all sse"];
+	info!("closing all sse");
 	for config.sse_tasks.each_value
 	|control_ch|
 	{

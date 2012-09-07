@@ -98,7 +98,7 @@ type response = {
 type response_handler = fn~ (hashmap<~str, ~str>, request, response) -> response;
 
 /// Maps a path rooted at resources_root to a resource body.
-type rsrc_loader = fn~ (~str) -> result::result<~str, ~str>;
+type rsrc_loader = fn~ (~str) -> result::Result<~str, ~str>;
 
 /// Returns true if a path rooted at resources_root points to a file.
 type rsrc_exists = fn~ (~str) -> bool;
@@ -173,12 +173,12 @@ fn is_valid_rsrc(path: ~str) -> bool
 fn static_view(_settings: hashmap<~str, ~str>, _request: request, response: response) -> response
 {
 	let path = mustache::render_str(~"{{request-path}}", response.context);
-	{body: ~"", template: path, context: std::map::str_hash() with response}
+	{body: ~"", template: path, context: std::map::str_hash() , .. response}
 }
 
 // Default config.missing handler. Assumes that there is a "not-found.html"
 // file at the resource root.
 fn missing_view(_settings: hashmap<~str, ~str>, _request: request, response: response) -> response
 {
-	{template: ~"not-found.html" with response}
+	{template: ~"not-found.html" , .. response}
 }

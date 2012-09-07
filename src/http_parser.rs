@@ -1,6 +1,6 @@
 import rparse::*;
-import std::map;
-import imap::*;
+use std::map;
+use imap::*;
 
 export http_request, make_parser;
 
@@ -15,7 +15,7 @@ type http_request = {
 fn is_hex(octet: u8) -> bool
 {
 	let ch = octet as char;
-	ret (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') || (ch >= '0' && ch <= '9');
+	return (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') || (ch >= '0' && ch <= '9');
 }
 
 fn to_int(octet: u8) -> uint
@@ -23,15 +23,15 @@ fn to_int(octet: u8) -> uint
 	let ch = octet as char;
 	if ch >= 'a' && ch <= 'f'
 	{
-		ret (ch - 'a') as uint + 10u;
+		return (ch - 'a') as uint + 10u;
 	}
 	else if ch >= 'A' && ch <= 'F'
 	{
-		ret (ch - 'A') as uint + 10u;
+		return (ch - 'A') as uint + 10u;
 	}
 	else
 	{
-		ret (ch - '0') as uint;
+		return (ch - '0') as uint;
 	}
 }
 
@@ -68,7 +68,7 @@ fn decode(url: ~str) -> ~str
 		}
 	}
 	
-	ret result;
+	return result;
 }
 
 // TODO: 
@@ -85,24 +85,24 @@ fn request_parser() -> parser<http_request>
 	
 	// version := integer '.' integer
 	let version = do seq3(decimal_number(), ".".lit(), decimal_number())
-		|major, _a2, minor| {result::ok((major, minor))};
+		|major, _a2, minor| {result::Ok((major, minor))};
 		
 	// method := identifier lws url lws 'HTTP/' version crnl
 	let method = do seq7(identifier(), lws, url, lws, "HTTP/".lit(), version, crnl)
-		|name, _a2, url, _a4, _a5, version, _a7| {result::ok((name, url, version))};
+		|name, _a2, url, _a4, _a5, version, _a7| {result::Ok((name, url, version))};
 		
 	// value := [^\r\n]+
 	// continuation := crnl [ \t] value
 	let value = match1({|c| c != '\r' && c != '\n'});
 	let continuation = do seq3(crnl, ws, value)
-		|_a1, _a2, v| {result::ok(~" " + str::trim(v))};
+		|_a1, _a2, v| {result::Ok(~" " + str::trim(v))};
 	
 	// name := [^:]+
 	// header := name ': ' value continuation* crnl
 	// headers := header*
 	let name = match1({|c| c != ':'});
 	let header = do seq5(name, ":".lit(), value, continuation.r0(), crnl)
-		|n, _a2, v, cnt, _a5| {result::ok((str::to_lower(n), str::trim(v) + str::connect(cnt, ~"")))};	// 4.2 says that header names are case-insensitive so we lower case them
+		|n, _a2, v, cnt, _a5| {result::Ok((str::to_lower(n), str::trim(v) + str::connect(cnt, ~"")))};	// 4.2 says that header names are case-insensitive so we lower case them
 	let headers = header.r0();
 	
 	// request := method headers crnl
@@ -110,13 +110,13 @@ fn request_parser() -> parser<http_request>
 		|a1, h, _a2|
 		{
 			let (n, u, (v1, v2)) = a1;
-			result::ok({method: n, major_version: v1, minor_version: v2, url: decode(u), headers: h, body: ~""})};
+			result::Ok({method: n, major_version: v1, minor_version: v2, url: decode(u), headers: h, body: ~""})};
 	
-	ret request;
+	return request;
 }
 
 // We return a closure so that we can build the parser just once.
-fn make_parser() -> fn@ (~str) -> result::result<http_request, ~str>
+fn make_parser() -> fn@ (~str) -> result::Result<http_request, ~str>
 {
 	|request: ~str|
 	{
@@ -124,7 +124,7 @@ fn make_parser() -> fn@ (~str) -> result::result<http_request, ~str>
 		do result::chain_err(parse(parser, ~"http request", request))
 		|err|
 		{
-			result::err(#fmt["Expected %s on line %? col %?", err.mesg, err.line, err.col])
+			result::Err(fmt!("Expected %s on line %? col %?", err.mesg, err.line, err.col))
 		}
 	}
 }
@@ -134,10 +134,10 @@ fn equal<T: copy>(result: T, expected: T) -> bool
 {
 	if result != expected
 	{
-		io::stderr().write_line(#fmt["Expected %? but found %?", expected, result]);
-		ret false;
+		io::stderr().write_line(fmt!("Expected %? but found %?", expected, result));
+		return false;
 	}
-	ret true;
+	return true;
 }
 
 #[test]
@@ -145,9 +145,9 @@ fn test_get_method1()
 {
 	let p = make_parser();
 	
-	alt p(~"GET / HTTP/1.1\r\n\r\n")
+	match p(~"GET / HTTP/1.1\r\n\r\n")
 	{
-		result::ok(value)
+		result::Ok(value) =>
 		{
 			assert equal(value.method, ~"GET");
 			assert equal(value.major_version, 1);
@@ -155,7 +155,7 @@ fn test_get_method1()
 			assert equal(value.url, ~"/");
 			assert equal(value.headers.len(), 0u);
 		}
-		result::err(mesg)
+		result::Err(mesg) =>
 		{
 			io::stderr().write_line(mesg);
 			assert false;
@@ -168,9 +168,9 @@ fn test_get_method2()
 {
 	let p = make_parser();
 	
-	alt p(~"GET / HTTP/1.1\r\nHost: localhost:8080\r\nUser-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:11.0) Gecko/20100101 Firefox/11.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept-Language: en-us,en;q=0.5\r\nAccept-Encoding: gzip, deflate\r\nConnection: keep-alive\r\n\r\n")
+	match p(~"GET / HTTP/1.1\r\nHost: localhost:8080\r\nUser-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:11.0) Gecko/20100101 Firefox/11.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept-Language: en-us,en;q=0.5\r\nAccept-Encoding: gzip, deflate\r\nConnection: keep-alive\r\n\r\n")
 	{
-		result::ok(value)
+		result::Ok(value) =>
 		{
 			assert equal(value.method, ~"GET");
 			assert equal(value.major_version, 1);
@@ -185,7 +185,7 @@ fn test_get_method2()
 			assert equal(value.headers.get(~"accept-encoding"), ~"gzip, deflate");
 			assert equal(value.headers.get(~"connection"), ~"keep-alive");
 		}
-		result::err(mesg)
+		result::Err(mesg) =>
 		{
 			io::stderr().write_line(mesg);
 			assert false;
@@ -198,14 +198,14 @@ fn test_unknown_method()
 {
 	let p = make_parser();
 	
-	alt p(~"GET / HXTP/1.1\r\n\r\n")
+	match p(~"GET / HXTP/1.1\r\n\r\n")
 	{
-		result::ok(value)
+		result::Ok(value) =>
 		{
-			io::stderr().write_line(#fmt["Somehow parsed %?", value]);
+			io::stderr().write_line(fmt!("Somehow parsed %?", value));
 			assert false;
 		}
-		result::err(mesg)
+		result::Err(mesg) =>
 		{
 			assert equal(mesg, ~"Expected 'HTTP/' on line 1 col 8");
 		}
@@ -217,15 +217,15 @@ fn test_header_values()
 {
 	let p = make_parser();
 	
-	alt p(~"GET / HTTP/1.1\r\nHost:   \t xxx\r\nBlah:   \t bbb \t\r\nMulti: line1\r\n  \tline2\r\n  line3\r\n\r\n")
+	match p(~"GET / HTTP/1.1\r\nHost:   \t xxx\r\nBlah:   \t bbb \t\r\nMulti: line1\r\n  \tline2\r\n  line3\r\n\r\n")
 	{
-		result::ok(value)
+		result::Ok(value) =>
 		{
 			assert equal(value.headers.get(~"host"), ~"xxx");
 			assert equal(value.headers.get(~"blah"), ~"bbb");
 			assert equal(value.headers.get(~"multi"), ~"line1 line2 line3");
 		}
-		result::err(mesg)
+		result::Err(mesg) =>
 		{
 			io::stderr().write_line(mesg);
 			assert false;
@@ -238,13 +238,13 @@ fn test_extension_method()
 {
 	let p = make_parser();
 	
-	alt p(~"Explode \t / HTTP/1.1\r\nHost: xxx\r\n\r\nsome text\nand more text")
+	match p(~"Explode \t / HTTP/1.1\r\nHost: xxx\r\n\r\nsome text\nand more text")
 	{
-		result::ok(value)
+		result::Ok(value) =>
 		{
 			assert equal(value.method, ~"Explode");
 		}
-		result::err(mesg)
+		result::Err(mesg) =>
 		{
 			io::stderr().write_line(mesg);
 			assert false;
@@ -257,13 +257,13 @@ fn test_encoded_url()
 {
 	let p = make_parser();
 	
-	alt p(~"GET /path%20with%20spaces HTTP/1.1\r\n\r\n")
+	match p(~"GET /path%20with%20spaces HTTP/1.1\r\n\r\n")
 	{
-		result::ok(value)
+		result::Ok(value) =>
 		{
 			assert equal(value.url, ~"/path with spaces");
 		}
-		result::err(mesg)
+		result::Err(mesg) =>
 		{
 			io::stderr().write_line(mesg);
 			assert false;
@@ -276,13 +276,13 @@ fn test_encoded_url2()
 {
 	let p = make_parser();
 	
-	alt p(~"GET /path%2099with%20digits HTTP/1.1\r\n\r\n")
+	match p(~"GET /path%2099with%20digits HTTP/1.1\r\n\r\n")
 	{
-		result::ok(value)
+		result::Ok(value) =>
 		{
 			assert equal(value.url, ~"/path 99with digits");
 		}
-		result::err(mesg)
+		result::Err(mesg) =>
 		{
 			io::stderr().write_line(mesg);
 			assert false;

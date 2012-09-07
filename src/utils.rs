@@ -2,18 +2,18 @@
 
 fn dump_string(title: ~str, text: ~str)
 {
-	io::println(#fmt["%s has %? bytes:", title, str::len(text)]);
+	io::println(fmt!("%s has %? bytes:", title, str::len(text)));
 	let mut i = 0u;
 	while i < str::len(text)
 	{
 		// Print the byte offset for the start of the line.
-		io::print(#fmt["%4X: ", i]);
+		io::print(fmt!("%4X: ", i));
 		
 		// Print the first 8 bytes as hex.
 		let mut k = 0u;
 		while k < 8u && i+k < str::len(text)
 		{
-			io::print(#fmt["%2X ", text[i+k] as uint]);
+			io::print(fmt!("%2X ", text[i+k] as uint));
 			k += 1u;
 		}
 		
@@ -23,7 +23,7 @@ fn dump_string(title: ~str, text: ~str)
 		k = 0u;
 		while k < 8u && i+8u+k < str::len(text)
 		{
-			io::print(#fmt["%2X ", text[i+8u+k] as uint]);
+			io::print(fmt!("%2X ", text[i+8u+k] as uint));
 			k += 1u;
 		}
 		
@@ -39,7 +39,7 @@ fn dump_string(title: ~str, text: ~str)
 			}
 			else
 			{
-				io::print(#fmt["%c", text[i] as char]);
+				io::print(fmt!("%c", text[i] as char));
 			}
 			k += 1u;
 			i += 1u;
@@ -65,10 +65,10 @@ fn check_strs(actual: ~str, expected: ~str) -> bool
 {
 	if actual != expected
 	{
-		io::stderr().write_line(#fmt["Found '%s', but expected '%s'", actual, expected]);
-		ret false;
+		io::stderr().write_line(fmt!("Found '%s', but expected '%s'", actual, expected));
+		return false;
 	}
-	ret true;
+	return true;
 }
 
 #[cfg(test)]
@@ -76,8 +76,8 @@ fn check_vectors<T>(actual: ~[T], expected: ~[T]) -> bool
 {
 	if actual != expected
 	{
-		io::stderr().write_line(#fmt["Found '%?', but expected '%?'", actual, expected]);
-		ret false;
+		io::stderr().write_line(fmt!("Found '%?', but expected '%?'", actual, expected));
+		return false;
 	}
-	ret true;
+	return true;
 }

@@ -1,6 +1,6 @@
 // http://www.w3.org/Protocols/rfc2616/rfc2616.html
-import socket;
-import connection::{handle_connection};
+use socket;
+use connection::{handle_connection};
 
 export start;
 
@@ -30,7 +30,7 @@ fn start(+config: config)
 				};
 				if result::is_err(r)
 				{
-					#error["Couldn't start web server at %s: %s", host, result::get_err(r)];
+					error!("Couldn't start web server at %s: %s", host, result::get_err(r));
 				}
 				comm::send(chan, 1u);
 			};
@@ -48,15 +48,15 @@ fn start(+config: config)
 
 fn attach(+config: config, host: ~str, shandle: @socket::socket_handle) -> result<@socket::socket_handle, ~str>
 {
-	#info["server is listening for new connections on %s:%?", host, config.port];
+	info!("server is listening for new connections on %s:%?", host, config.port);
 	do result::chain(socket::accept(shandle))
 	|result|
 	{
-		#info["connected to client at %s", result.remote_addr];
+		info!("connected to client at %s", result.remote_addr);
 		let config2 = copy(config);
 		do task::spawn_sched(task::manual_threads(4)) {handle_connection(config2, result.fd, host, result.remote_addr)};	// TODO: work around for https://github.com/mozilla/rust/issues/2841
 		//do task::spawn {handle_connection(config2, result.fd, host, result.remote_addr)};
-		result::ok(shandle)
+		result::Ok(shandle)
 	};
 	attach(config, host, shandle)
 }
