@@ -81,7 +81,7 @@ type response =
 	status: ~str,
 	headers: hashmap<~str, ~str>,
 	body: ~str,
-	template: Path,
+	template: ~str,				// an URL path is very similar to a path::PosixPath, but that is conditionally compiled in
 	context: hashmap<@~str, mustache::Data>,
 };
 	
@@ -182,7 +182,7 @@ fn is_valid_rsrc(path: &Path) -> bool
 // Default config.static view handler.
 fn static_view(_settings: hashmap<~str, ~str>, _request: request, response: response) -> response
 {
-	let path = path::from_str(mustache::render_str(~"{{request-path}}", response.context));
+	let path = mustache::render_str(~"{{request-path}}", response.context);
 	{body: ~"", template: path, context: std::map::box_str_hash(), ..response}
 }
 
@@ -190,5 +190,5 @@ fn static_view(_settings: hashmap<~str, ~str>, _request: request, response: resp
 // file at the resource root.
 fn missing_view(_settings: hashmap<~str, ~str>, _request: request, response: response) -> response
 {
-	{template: path::from_str(~"not-found.html"), ..response}
+	{template: ~"not-found.html", ..response}
 }

@@ -19,7 +19,7 @@ check: bin/test-server
 	./bin/test-server
 
 check1: bin/test-server
-	export RUST_LOG=rwebserve=2 && ./bin/test-server non_html_route
+	export RUST_LOG=rwebserve=2 && ./bin/test-server path_outside_root
 
 # Better to use /usr/local/lib but linking it in with -L /usr/local/lib fails because
 # there is a libccore there and in the nested rustc directory.

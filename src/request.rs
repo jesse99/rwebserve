@@ -1,9 +1,7 @@
 //! Handles an incoming request from a client connection and sends a response.
-//use core::path::{from_str};
 use io::WriterUtil;
 use imap::*;
 use configuration::*;
-//use connection::{conn_config, config_to_conn};
 use http_parser::{http_request};
 use sse::{process_sse};
 use sse::{conn_config, config_to_conn};
@@ -162,7 +160,7 @@ fn find_handler(+config: conn_config, method: ~str, request_path: ~str, types: ~
 	// See if the url matches a file under the resource root (i.e. the url can't have too many .. components).
 	if option::is_none(handler)
 	{
-		let path = config.resources_root.push(request_path);
+		let path = utils::url_to_path(&config.resources_root, request_path);
 		let path = path.normalize();
 		if str::starts_with(path.to_str(), config.resources_root.to_str())
 		{
@@ -275,7 +273,7 @@ fn load_template(config: conn_config, path: &Path) -> result::Result<~str, ~str>
 
 fn process_template(config: conn_config, response: response, request: request) -> (response, ~str)
 {
-	let path = config.resources_root.push_rel(&response.template);
+	let path = utils::url_to_path(&config.resources_root, response.template);
 	let (response, body) =
 		match load_template(config, &path)
 		{
@@ -303,7 +301,7 @@ fn process_template(config: conn_config, response: response, request: request) -
 	{
 		// If we were able to load a template, and we have context, then use the
 		// context to expand the template.
-		let base_dir = response.template.dirname();
+		let base_dir = url_dirname(response.template);
 		let base_url = fmt!("http://%s:%?/%s/", request.local_addr, config.port, base_dir);
 		response.context.insert(@~"base-path", mustache::Str(@base_url));
 		
@@ -312,6 +310,15 @@ fn process_template(config: conn_config, response: response, request: request) -
 	else
 	{
 		(response, body)
+	}
+}
+
+fn url_dirname(path: &str) -> ~str
+{
+	match str::find_char(path, '/')
+	{
+		option::Some(index) 	=> path.slice(0, index+1),
+		option::None			=> path.to_unique(),
 	}
 }
 
@@ -346,7 +353,7 @@ fn path_to_type(config: conn_config, path: ~str) -> ~str
 #[cfg(test)]
 fn test_view(_settings: hashmap<~str, ~str>, _request: request, response: response) -> response
 {
-	{template: path::from_str(~"test.html"), ..response}
+	{template: ~"test.html", ..response}
 }
 
 #[cfg(test)]

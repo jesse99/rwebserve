@@ -70,7 +70,7 @@ fn make_initial_response(config: conn_config, status_code: ~str, status_mesg: ~s
 	context.insert(@~"status-mesg", mustache::Str(@status_mesg));
 	context.insert(@~"request-version", mustache::Str(@request.version));
 	
-	{status: status_code + ~" " + status_mesg, headers: headers, body: ~"", template: path::from_str(~""), context: context}
+	{status: status_code + ~" " + status_mesg, headers: headers, body: ~"", template: ~"", context: context}
 }
 
 /// Called by the server to spin up a task for an sse session. Returns a
@@ -175,6 +175,6 @@ fn make_response(config: conn_config) -> configuration::response
 		(~"Transfer-Encoding", ~"chunked"),
 	]);
 	
-	{status: ~"200 OK", headers: headers, body: ~"", template: path::from_str(~""), context: std::map::box_str_hash()}
+	{status: ~"200 OK", headers: headers, body: ~"", template: ~"", context: std::map::box_str_hash()}
 }
 
