@@ -1,39 +1,22 @@
 //! The module responsible for communication using a persistent connection to a client.
-use socket;
+use socket::*;
+use configuration::*;
 use http_parser::*;
+use imap::*;
 use request::{process_request, make_header_and_body};
-use imap::{immutable_map, imap_methods};
-use sse;
+//use imap::{immutable_map, imap_methods};
+use sse::*;
 
-export handle_connection, conn_config, config_to_conn;
-
-// Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.
-type conn_config = {
-	hosts: ~[~str],
-	port: u16,
-	server_info: ~str,
-	resources_root: ~str,
-	route_list: ~[route],
-	views_table: hashmap<~str, response_handler>,
-	static: response_handler,
-	sse_openers: hashmap<~str, open_sse>,	// key is a GET path
-	sse_tasks: hashmap<~str, control_chan>,	// key is a GET path
-	sse_push: comm::chan<~str>,
-	missing: response_handler,
-	static_type_table: hashmap<~str, ~str>,
-	read_error: ~str,
-	load_rsrc: rsrc_loader,
-	valid_rsrc: rsrc_exists,
-	settings: hashmap<~str, ~str>};
+export handle_connection, conn_config, config_to_conn, to_route;
 
 // TODO: probably want to use task::unsupervise
 fn handle_connection(++config: config, fd: libc::c_int, local_addr: ~str, remote_addr: ~str)
 {
-	let sport = comm::port();
-	let sch = comm::chan(sport);
-	let eport = comm::port();
-	let ech = comm::chan(eport);
-	let sock = socket::create_socket(fd);			// @socket_handle(fd);
+	let sport = comm::Port();
+	let sch = comm::Chan(sport);
+	let eport = comm::Port();
+	let ech = comm::Chan(eport);
+	let sock = @socket::socket_handle(fd);
 	
 	let iconfig = config_to_conn(config, ech);
 	let err = validate_config(iconfig);
@@ -43,7 +26,8 @@ fn handle_connection(++config: config, fd: libc::c_int, local_addr: ~str, remote
 		fail;
 	}
 	
-	do task::spawn {read_requests(remote_addr, fd, sch);}
+	let ra = copy remote_addr;
+	do task::spawn {read_requests(ra, fd, sch);}
 	loop
 	{
 		debug!("-----------------------------------------------------------");
@@ -69,9 +53,9 @@ fn handle_connection(++config: config, fd: libc::c_int, local_addr: ~str, remote
 	}
 }
 
-fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::chan<option::Option<http_request>>)
+fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<option::Option<http_request>>)
 {
-	let sock = socket::create_socket(fd);		// socket::socket_handle(fd);
+	let sock = @socket::socket_handle(fd);		// socket::socket_handle(fd);
 	let parse = make_parser();
 	loop
 	{
@@ -222,27 +206,7 @@ fn write_response(sock: @socket::socket_handle, header: ~str, body: ~str)
 	// likelihood of the network stack putting all of this into a single packet which makes
 	// packets easier to analyze.
 	let data = header + body;
-	do str::as_buf(data) |buffer| {socket::send_buf(sock, buffer, str::len(data))};
-}
-
-fn config_to_conn(config: config, push: comm::chan<~str>) -> conn_config
-{
-	{	hosts: config.hosts,
-		port: config.port,
-		server_info: config.server_info,
-		resources_root: config.resources_root,
-		route_list: vec::map(config.routes, to_route),
-		views_table: std::map::hash_from_strs(config.views),
-		static: copy(config.static),
-		sse_openers: std::map::hash_from_strs(config.sse),
-		sse_tasks: std::map::str_hash(),
-		sse_push: push,
-		missing: copy(config.missing),
-		static_type_table: std::map::hash_from_strs(config.static_types),
-		read_error: config.read_error,
-		load_rsrc: copy(config.load_rsrc),
-		valid_rsrc: copy(config.valid_rsrc),
-		settings: std::map::hash_from_strs(config.settings)}
+	do str::as_buf(data) |buffer, _len| {socket::send_buf(sock, buffer, str::len(data))};
 }
 
 fn validate_config(config: conn_config) -> ~str
@@ -273,11 +237,11 @@ fn validate_config(config: conn_config) -> ~str
 		vec::push(errors, ~"server_info is empty.");
 	}
 	
-	if str::is_empty(config.resources_root)
+	if str::is_empty(config.resources_root.to_str())
 	{
 		vec::push(errors, ~"resources_root is empty.");
 	}
-	else if !os::path_is_dir(config.resources_root)
+	else if !os::path_is_dir(&config.resources_root)
 	{
 		vec::push(errors, ~"resources_root is not a directory.");
 	}
@@ -286,8 +250,8 @@ fn validate_config(config: conn_config) -> ~str
 	for vec::each(~[~"forbidden.html", ~"home.html", ~"not-found.html", ~"not-supported.html"])
 	|name|
 	{
-		let path = path::connect(config.resources_root, name);
-		if !os::path_exists(path)
+		let path = config.resources_root.push(name);
+		if !os::path_exists(&path)
 		{
 			vec::push(names, name);
 		}
@@ -316,7 +280,7 @@ fn validate_config(config: conn_config) -> ~str
 	};
 	if vec::is_not_empty(missing_routes)
 	{
-		fn le(&&a: ~str, &&b: ~str) -> bool {a <= b}
+		pure fn le(a: &~str, b: &~str) -> bool {*a <= *b}
 		let missing_routes = std::sort::merge_sort(le, missing_routes);		// order depends on hash, but for unit tests we want to use something more consistent
 		
 		vec::push(errors, fmt!("No views for the following routes: %s", str::connect(missing_routes, ~", ")));
@@ -333,7 +297,7 @@ fn validate_config(config: conn_config) -> ~str
 	};
 	if vec::is_not_empty(missing_views)
 	{
-		fn le(&&a: ~str, &&b: ~str) -> bool {a <= b}
+		pure fn le(a: &~str, b: &~str) -> bool {*a <= *b}
 		let missing_views = std::sort::merge_sort(le, missing_views);
 		
 		vec::push(errors, fmt!("No routes for the following views: %s", str::connect(missing_views, ~", ")));
@@ -341,7 +305,6 @@ fn validate_config(config: conn_config) -> ~str
 	
 	return str::connect(errors, ~" ");
 }
-
 
 fn to_route(input: (~str, ~str, ~str)) -> route
 {
@@ -372,13 +335,13 @@ fn routes_must_have_views()
 	let config = {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
-		resources_root: ~"server/html",
+		resources_root: path::from_str(~"server/html"),
 		routes: ~[(~"GET", ~"/", ~"home"), (~"GET", ~"/hello", ~"greeting"), (~"GET", ~"/goodbye", ~"farewell")],
-		views: ~[(~"home",  missing_view)]
-		, .. initialize_config()};
+		views: ~[(~"home",  missing_view)],
+		..initialize_config()};
 		
-	let eport = comm::port();
-	let ech = comm::chan(eport);
+	let eport = comm::Port();
+	let ech = comm::Chan(eport);
 	let iconfig = config_to_conn(config, ech);
 	
 	assert validate_config(iconfig) == ~"No views for the following routes: farewell, greeting";
@@ -390,13 +353,13 @@ fn views_must_have_routes()
 	let config = {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
-		resources_root: ~"server/html",
+		resources_root: path::from_str(~"server/html"),
 		routes: ~[(~"GET", ~"/", ~"home")],
-		views: ~[(~"home",  missing_view), (~"greeting",  missing_view), (~"goodbye",  missing_view)]
-		, .. initialize_config()};
+		views: ~[(~"home",  missing_view), (~"greeting",  missing_view), (~"goodbye",  missing_view)],
+		..initialize_config()};
 		
-	let eport = comm::port();
-	let ech = comm::chan(eport);
+	let eport = comm::Port();
+	let ech = comm::Chan(eport);
 	let iconfig = config_to_conn(config, ech);
 	
 	assert validate_config(iconfig) == ~"No routes for the following views: goodbye, greeting";
@@ -408,13 +371,13 @@ fn root_must_have_required_files()
 	let config = {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
-		resources_root: ~"/tmp",
+		resources_root: path::from_str(~"/tmp"),
 		routes: ~[(~"GET", ~"/", ~"home")],
-		views: ~[(~"home",  missing_view)]
-		, .. initialize_config()};
+		views: ~[(~"home",  missing_view)],
+		..initialize_config()};
 		
-	let eport = comm::port();
-	let ech = comm::chan(eport);
+	let eport = comm::Port();
+	let ech = comm::Chan(eport);
 	let iconfig = config_to_conn(config, ech);
 	
 	assert validate_config(iconfig) == ~"Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";

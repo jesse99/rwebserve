@@ -1,4 +1,5 @@
 //! Misc functions used internally.
+use io::WriterUtil;
 
 fn dump_string(title: ~str, text: ~str)
 {

@@ -1,4 +1,5 @@
-import rparse::*;
+use io::{WriterUtil};
+use rparse::rparse::*;
 use std::map;
 use imap::*;
 
@@ -74,14 +75,14 @@ fn decode(url: ~str) -> ~str
 // TODO: 
 // Server, User-Agent, and Via values can have comments
 // double quotes can be used with header values that use separators
-fn request_parser() -> parser<http_request>
+fn request_parser() -> Parser<http_request>
 {
 	let ws = " \t".anyc();
 	let lws = ws.r0();
 	let crnl = "\r\n".lit();
 	
 	// url := [^ ]+
-	let url = match1({|c| c != ' '});
+	let url = match1(|c| {c != ' '});
 	
 	// version := integer '.' integer
 	let version = do seq3(decimal_number(), ".".lit(), decimal_number())
@@ -95,14 +96,14 @@ fn request_parser() -> parser<http_request>
 	// continuation := crnl [ \t] value
 	let value = match1({|c| c != '\r' && c != '\n'});
 	let continuation = do seq3(crnl, ws, value)
-		|_a1, _a2, v| {result::Ok(~" " + str::trim(v))};
+		|_a1, _a2, v| {result::Ok(~" " + str::trim(*v))};
 	
 	// name := [^:]+
 	// header := name ': ' value continuation* crnl
 	// headers := header*
 	let name = match1({|c| c != ':'});
 	let header = do seq5(name, ":".lit(), value, continuation.r0(), crnl)
-		|n, _a2, v, cnt, _a5| {result::Ok((str::to_lower(n), str::trim(v) + str::connect(cnt, ~"")))};	// 4.2 says that header names are case-insensitive so we lower case them
+		|n, _a2, v, cnt, _a5| {result::Ok((str::to_lower(*n), str::trim(*v) + str::connect(*cnt, ~"")))};	// 4.2 says that header names are case-insensitive so we lower case them
 	let headers = header.r0();
 	
 	// request := method headers crnl
@@ -110,7 +111,7 @@ fn request_parser() -> parser<http_request>
 		|a1, h, _a2|
 		{
 			let (n, u, (v1, v2)) = a1;
-			result::Ok({method: n, major_version: v1, minor_version: v2, url: decode(u), headers: h, body: ~""})};
+			result::Ok({method: *n, major_version: v1, minor_version: v2, url: decode(*u), headers: *h, body: ~""})};
 	
 	return request;
 }
@@ -121,10 +122,10 @@ fn make_parser() -> fn@ (~str) -> result::Result<http_request, ~str>
 	|request: ~str|
 	{
 		let parser = request_parser();
-		do result::chain_err(parse(parser, ~"http request", request))
+		do result::chain_err(parser.parse(@~"http request", request))
 		|err|
 		{
-			result::Err(fmt!("Expected %s on line %? col %?", err.mesg, err.line, err.col))
+			result::Err(fmt!("Expected %s on line %? col %?", *err.mesg, err.line, err.col))
 		}
 	}
 }

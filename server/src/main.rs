@@ -92,15 +92,15 @@ fn process_command_line(args: ~[~str]) -> ~str
 
 // Like spawn_listener except the new task (and whatever tasks it spawns) are distributed
 // among a fixed number of OS threads. TODO: work around for https://github.com/mozilla/rust/issues/2841
-fn spawn_threaded_listener<A:send>(num_threads: uint, +block: fn~ (comm::port<A>)) -> comm::chan<A>
+fn spawn_threaded_listener<A:send>(num_threads: uint, +block: fn~ (comm::Port<A>)) -> comm::Chan<A>
 {
-	let channel_port: comm::port<comm::chan<A>> = comm::port();
-	let channel_channel = comm::chan(channel_port);
+	let channel_port: comm::Port<comm::Chan<A>> = comm::Port();
+	let channel_channel = comm::Chan(channel_port);
 	
 	do task::spawn_sched(task::manual_threads(num_threads))
 	{
-		let task_port: comm::port<A> = comm::port();
-		let task_channel = comm::chan(task_port);
+		let task_port: comm::Port<A> = comm::Port();
+		let task_channel = comm::Chan(task_port);
 		comm::send(channel_channel, task_channel);
 		
 		block(task_port);
@@ -123,12 +123,12 @@ fn greeting_view(_settings: hashmap<~str, ~str>, request: server::request, respo
 
 enum state_mesg
 {
-	add_listener(~str, comm::chan<int>),	// str is used to identify the listener
+	add_listener(~str, comm::Chan<int>),	// str is used to identify the listener
 	remove_listener(~str),
 	shutdown,
 }
 
-type state_chan = comm::chan<state_mesg>;
+type state_chan = comm::Chan<state_mesg>;
 
 // This is a single task that manages the state for our sample server. Normally this will
 // do something like get notified of database changes and send messages to connection
@@ -139,10 +139,10 @@ type state_chan = comm::chan<state_mesg>;
 fn manage_state() -> state_chan
 {
 	do spawn_threaded_listener(3)
-	|state_port: comm::port<state_mesg>|
+	|state_port: comm::Port<state_mesg>|
 	{
-		let timer_port = comm::port();
-		let timer_chan = comm::chan(timer_port);
+		let timer_port = comm::Port();
+		let timer_chan = comm::Chan(timer_port);
 		
 		// TODO: Can get rid of this once peek works better. See https://github.com/mozilla/rust/issues/2841
 		do task::spawn
@@ -194,8 +194,8 @@ fn uptime_sse(registrar: state_chan, request: server::request, push: server::pus
 	|control_port: server::control_port|
 	{
 		#info["starting uptime sse stream"];
-		let notify_port = comm::port();
-		let notify_chan = comm::chan(notify_port);
+		let notify_port = comm::Port();
+		let notify_chan = comm::Chan(notify_port);
 		
 		let key = #fmt["uptime %?", ptr::addr_of(notify_port)];
 		comm::send(registrar, add_listener(key, notify_chan));

@@ -1,4 +1,6 @@
-export component, compile, match;
+use std::map::*;
+
+export component, compile, match_template;
 
 // Components of a template path.
 enum component

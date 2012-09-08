@@ -1,4 +1,8 @@
 //! Types and functions used to configure rwebserve.
+use path::{Path};
+use std::map::*;
+use mustache::*;
+use sse::*;
 
 /// Configuration information for the web server.
 /// 
@@ -20,11 +24,12 @@
 /// code will be enabled (among other things this will default the Cache-Control header to "no-cache").
 /// 
 /// initialize_config can be used to initialize some of these fields.
-type config = {
+type config =
+{
 	hosts: ~[~str],
 	port: u16,
 	server_info: ~str,
-	resources_root: ~str,
+	resources_root: Path,
 	routes: ~[(~str, ~str, ~str)],					// better to use hashmap, but hashmaps cannot be sent
 	views: ~[(~str, response_handler)],
 	static: response_handler,
@@ -34,7 +39,8 @@ type config = {
 	read_error: ~str,
 	load_rsrc: rsrc_loader,
 	valid_rsrc: rsrc_exists,
-	settings: ~[(~str, ~str)]};
+	settings: ~[(~str, ~str)],
+};
 	
 /// Information about incoming http requests. Passed into view functions.
 /// 
@@ -47,7 +53,8 @@ type config = {
 /// * params: contains entries from the query portion of the URL. Note that the keys may be duplicated.
 /// * headers: headers from the http request. Note that the names are lower cased.
 /// * body: body of the http request.
-type request = {
+type request =
+{
 	version: ~str,
 	method: ~str,
 	local_addr: ~str,
@@ -56,7 +63,8 @@ type request = {
 	matches: hashmap<~str, ~str>,
 	params: imap::imap<~str, ~str>,
 	headers: hashmap<~str, ~str>,
-	body: ~str};
+	body: ~str,
+};
 
 /// Returned by view functions and used to generate http response messages.
 /// 
@@ -68,12 +76,14 @@ type request = {
 /// 
 /// If template is not empty then body should be empty. If body is not empty then
 /// headers["Content-Type"] should usually be explicitly set.
-type response = {
+type response =
+{
 	status: ~str,
 	headers: hashmap<~str, ~str>,
 	body: ~str,
-	template: ~str,
-	context: hashmap<~str, mustache::data>};
+	template: Path,
+	context: hashmap<@~str, mustache::Data>,
+};
 	
 /// Function used to generate an HTTP response.
 /// 
@@ -98,10 +108,10 @@ type response = {
 type response_handler = fn~ (hashmap<~str, ~str>, request, response) -> response;
 
 /// Maps a path rooted at resources_root to a resource body.
-type rsrc_loader = fn~ (~str) -> result::Result<~str, ~str>;
+type rsrc_loader = fn~ (path: &Path) -> result::Result<~str, ~str>;
 
 /// Returns true if a path rooted at resources_root points to a file.
-type rsrc_exists = fn~ (~str) -> bool;
+type rsrc_exists = fn~ (path: &Path) -> bool;
 
 type route = {method: ~str, template: ~[uri_template::component], mime_type: ~str, route: ~str};
 
@@ -120,7 +130,7 @@ fn initialize_config() -> config
 	hosts: ~[~""],
 	port: 80_u16,
 	server_info: ~"",
-	resources_root: ~"",
+	resources_root: path::from_str(~""),
 	routes: ~[],
 	views: ~[],
 	static: static_view,
@@ -164,7 +174,7 @@ fn initialize_config() -> config
 	settings: ~[]}
 }
 
-fn is_valid_rsrc(path: ~str) -> bool
+fn is_valid_rsrc(path: &Path) -> bool
 {
 	os::path_exists(path) && !os::path_is_dir(path)
 }
@@ -172,13 +182,13 @@ fn is_valid_rsrc(path: ~str) -> bool
 // Default config.static view handler.
 fn static_view(_settings: hashmap<~str, ~str>, _request: request, response: response) -> response
 {
-	let path = mustache::render_str(~"{{request-path}}", response.context);
-	{body: ~"", template: path, context: std::map::str_hash() , .. response}
+	let path = path::from_str(mustache::render_str(~"{{request-path}}", response.context));
+	{body: ~"", template: path, context: std::map::box_str_hash(), ..response}
 }
 
 // Default config.missing handler. Assumes that there is a "not-found.html"
 // file at the resource root.
 fn missing_view(_settings: hashmap<~str, ~str>, _request: request, response: response) -> response
 {
-	{template: ~"not-found.html" , .. response}
+	{template: path::from_str(~"not-found.html"), ..response}
 }

@@ -14,15 +14,15 @@
 
 use std;
 use mustache (name = "mustache", vers = "0.1");
-use rparse (name = "rparse", vers = "0.5");
+use rparse (name = "rparse", vers = "0.6");
 use socket (name = "socket", vers = "0.1");
 
-//mod configuration;
-//mod connection;
-//mod http_parser;
-//mod imap;
-//mod request;
-//mod server;
-//mod sse;
-//mod uri_template;
+mod configuration; 
+mod connection;
+mod http_parser;
+mod imap;
+mod request;
+mod server;
+mod sse;
+mod uri_template;
 mod utils;

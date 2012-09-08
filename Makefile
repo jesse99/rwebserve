@@ -31,7 +31,7 @@ install:
 update-libraries:
 	cp /usr/local/lib/rust/libmustache-*-0.1.dylib bin
 	cp /usr/local/lib/rust/libsocket-*-0.1.dylib bin
-	cp /usr/local/lib/rust/librparse-*-0.5.dylib bin
+	cp /usr/local/lib/rust/librparse-*-0.6.dylib bin
 
 # ------------------
 # Binary targets 
@@ -43,9 +43,9 @@ update-libraries:
 # setting an executable's name, but not libraries).
 .PHONY : lib
 lib:
-	$(RUSTC) --out-dir bin -L bin -O src/rwebserve.rc
+	$(RUSTC) --out-dir bin -L bin -O src/crate.rc
 
-bin/test-server: src/rwebserve.rc src/*.rs
+bin/test-server: src/crate.rc src/*.rs
 	$(RUSTC) -L bin --test -o $@ $<
 
 bin/server: server/src/server.rc server/src/*.rs bin/librwebserve*

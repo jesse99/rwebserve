@@ -1,5 +1,5 @@
 //! Simple immutable and sendable multimap.
-use option::extensions;
+//use option::extensions;
 
 type imap<K: copy, V: copy> = ~[(K, V)];
 
@@ -9,7 +9,7 @@ trait immutable_map<K: copy, V: copy>
 	fn contains_key(key: K) -> bool;
 	fn get(key: K) -> V;
 	fn get_all(key: K) -> ~[V];
-	fn find(key: K) -> option<V>;
+	fn find(key: K) -> Option<V>;
 	fn each(block: fn(K, V) -> bool);
 	fn each_key(block: fn(K) -> bool);
 	fn each_value(block: fn(V) -> bool);
@@ -64,7 +64,7 @@ impl<K: copy, V: copy> imap<K, V> : immutable_map<K, V>
 		}
 	}
 	
-	fn find(key: K) -> option<V>
+	fn find(key: K) -> Option<V>
 	{
 		match vec::find(self, |e| {e.first() == key})
 		{
