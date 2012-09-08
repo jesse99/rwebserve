@@ -23,25 +23,25 @@ use sse::*;
 /// * settings: arbitrary key/value pairs passed into view handlers. If debug is "true" rwebserve debugging 
 /// code will be enabled (among other things this will default the Cache-Control header to "no-cache").
 /// 
-/// initialize_config can be used to initialize some of these fields.
-type Config =
+/// initialize_config can be used to initialize some of these fields. Note that this is sendable and copyable type.
+struct Config
 {
-	hosts: ~[~str],
-	port: u16,
-	server_info: ~str,
-	resources_root: Path,
-	routes: ~[(~str, ~str, ~str)],					// better to use hashmap, but hashmaps cannot be sent
-	views: ~[(~str, ResponseHandler)],
-	static_handlers: ResponseHandler,
-	sse: ~[(~str, OpenSse)],
-	missing: ResponseHandler,
-	static_types: ~[(~str, ~str)],
-	read_error: ~str,
-	load_rsrc: RsrcLoader,
-	valid_rsrc: RsrcExists,
-	settings: ~[(~str, ~str)],
-};
-	
+	let hosts: ~[~str];
+	let port: u16;
+	let server_info: ~str;
+	let resources_root: Path;
+	let routes: ~[(~str, ~str, ~str)];					// better to use hashmap, but hashmaps cannot be sent
+	let views: ~[(~str, ResponseHandler)];
+	let static_handlers: ResponseHandler;
+	let sse: ~[(~str, OpenSse)];
+	let missing: ResponseHandler;
+	let static_types: ~[(~str, ~str)];
+	let read_error: ~str;
+	let load_rsrc: RsrcLoader;
+	let valid_rsrc: RsrcExists;
+	let settings: ~[(~str, ~str)];
+}
+
 /// Information about incoming http requests. Passed into view functions.
 /// 
 /// * version: HTTP version.
@@ -53,18 +53,20 @@ type Config =
 /// * params: contains entries from the query portion of the URL. Note that the keys may be duplicated.
 /// * headers: headers from the http request. Note that the names are lower cased.
 /// * body: body of the http request.
-type Request =
+struct Request
 {
-	version: ~str,
-	method: ~str,
-	local_addr: ~str,
-	remote_addr: ~str,
-	path: ~str,
-	matches: hashmap<~str, ~str>,
-	params: imap::IMap<~str, ~str>,
-	headers: hashmap<~str, ~str>,
-	body: ~str,
-};
+	let version: ~str;
+	let method: ~str;
+	let local_addr: ~str;
+	let remote_addr: ~str;
+	let path: ~str;
+	let matches: hashmap<@~str, @~str>;
+	let params: imap::IMap<@~str, @~str>;
+	let headers: hashmap<@~str, @~str>;
+	let body: ~str;
+	
+	drop {}
+}
 
 /// Returned by view functions and used to generate http response messages.
 /// 
@@ -105,7 +107,7 @@ type Response =
 /// * context: new entries will often be added. If template is not actually a template file empty the context.
 /// 
 /// After the function returns a base-path entry is added to the response.context with the url to the directory containing the template file.
-type ResponseHandler = fn~ (hashmap<@~str, @~str>, Request, Response) -> Response;
+type ResponseHandler = fn~ (settings: hashmap<@~str, @~str>, request: &Request, response: &Response) -> Response;
 
 /// Maps a path rooted at resources_root to a resource body.
 type RsrcLoader = fn~ (path: &Path) -> result::Result<~str, ~str>;
@@ -126,52 +128,54 @@ type Route = {method: ~str, template: ~[uri_template::Component], mime_type: ~st
 /// * valid_rsrc: is initialized to os::path_exists && !os::path_is_dir.
 fn initialize_config() -> Config
 {
+	Config 
 	{
-	hosts: ~[~""],
-	port: 80_u16,
-	server_info: ~"",
-	resources_root: path::from_str(~""),
-	routes: ~[],
-	views: ~[],
-	static_handlers: static_view,
-	sse: ~[],
-	missing: missing_view,
-	static_types: ~[
-		(~".m4a", ~"audio/mp4"),
-		(~".m4b", ~"audio/mp4"),
-		(~".mp3", ~"audio/mpeg"),
-		(~".wav", ~"audio/vnd.wave"),
-		
-		(~".gif", ~"image/gif"),
-		(~".jpeg", ~"image/jpeg"),
-		(~".jpg", ~"image/jpeg"),
-		(~".png", ~"image/png"),
-		(~".tiff", ~"image/tiff"),
-		
-		(~".css", ~"text/css"),
-		(~".csv", ~"text/csv"),
-		(~".html", ~"text/html"),
-		(~".htm", ~"text/html"),
-		(~".txt", ~"text/plain"),
-		(~".text", ~"text/plain"),
-		(~".xml", ~"text/xml"),
-		
-		(~".js", ~"text/javascript"),
-		
-		(~".mp4", ~"video/mp4"),
-		(~".mov", ~"video/quicktime"),
-		(~".mpg", ~"video/mpeg"),
-		(~".mpeg", ~"video/mpeg"),
-		(~".qt", ~"video/quicktime")],
-	read_error: ~"<!DOCTYPE html>
-<meta charset=utf-8>
-
-<title>Error 403 (Forbidden)!</title>
-
-<p>Could not read URL {{request-path}}.</p>",
-	load_rsrc: io::read_whole_file_str,
-	valid_rsrc: is_valid_rsrc,
-	settings: ~[]}
+		hosts: ~[~""],
+		port: 80_u16,
+		server_info: ~"",
+		resources_root: path::from_str(~""),
+		routes: ~[],
+		views: ~[],
+		static_handlers: static_view,
+		sse: ~[],
+		missing: missing_view,
+		static_types: ~[
+			(~".m4a", ~"audio/mp4"),
+			(~".m4b", ~"audio/mp4"),
+			(~".mp3", ~"audio/mpeg"),
+			(~".wav", ~"audio/vnd.wave"),
+			
+			(~".gif", ~"image/gif"),
+			(~".jpeg", ~"image/jpeg"),
+			(~".jpg", ~"image/jpeg"),
+			(~".png", ~"image/png"),
+			(~".tiff", ~"image/tiff"),
+			
+			(~".css", ~"text/css"),
+			(~".csv", ~"text/csv"),
+			(~".html", ~"text/html"),
+			(~".htm", ~"text/html"),
+			(~".txt", ~"text/plain"),
+			(~".text", ~"text/plain"),
+			(~".xml", ~"text/xml"),
+			
+			(~".js", ~"text/javascript"),
+			
+			(~".mp4", ~"video/mp4"),
+			(~".mov", ~"video/quicktime"),
+			(~".mpg", ~"video/mpeg"),
+			(~".mpeg", ~"video/mpeg"),
+			(~".qt", ~"video/quicktime")],
+		read_error: ~"<!DOCTYPE html>
+	<meta charset=utf-8>
+	
+	<title>Error 403 (Forbidden)!</title>
+	
+	<p>Could not read URL {{request-path}}.</p>",
+		load_rsrc: io::read_whole_file_str,
+		valid_rsrc: is_valid_rsrc,
+		settings: ~[],
+	}
 }
 
 fn is_valid_rsrc(path: &Path) -> bool
@@ -180,15 +184,15 @@ fn is_valid_rsrc(path: &Path) -> bool
 }
 
 // Default config.static view handler.
-fn static_view(_settings: hashmap<@~str, @~str>, _request: Request, response: Response) -> Response
+fn static_view(_settings: hashmap<@~str, @~str>, _request: &Request, response: &Response) -> Response
 {
 	let path = mustache::render_str(~"{{request-path}}", response.context);
-	{body: ~"", template: path, context: std::map::box_str_hash(), ..response}
+	{body: ~"", template: path, context: std::map::box_str_hash(), ..*response}
 }
 
 // Default config.missing handler. Assumes that there is a "not-found.html"
 // file at the resource root.
-fn missing_view(_settings: hashmap<@~str, @~str>, _request: Request, response: Response) -> Response
+fn missing_view(_settings: hashmap<@~str, @~str>, _request: &Request, response: &Response) -> Response
 {
-	{template: ~"not-found.html", ..response}
+	{template: ~"not-found.html", ..*response}
 }

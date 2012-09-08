@@ -7,34 +7,31 @@ export start;
 /// Startup the server.
 /// 
 /// Currently this will run until a client does a GET on '/shutdown' in which case exit is called.
-fn start(+config: configuration::Config)
+fn start(config: &configuration::Config)
 {
 	let port = comm::Port::<uint>();
 	let chan = comm::Chan::<uint>(port);
 	let mut count = vec::len(config.hosts);
 	
 	// Accept connections from clients on one or more interfaces.
-	do task::spawn
+	for vec::each(config.hosts)
+	|host|
 	{
-		for vec::each(config.hosts)
-		|host|
+		let h = copy host;
+		let config2 = copy *config;
+		do task::spawn
 		{
-			let h = copy host;
-			let config2 = copy(config);
-			do task::spawn
+			let r = do result::chain(socket::bind_socket(h, config2.port))
+			|shandle|
 			{
-				let r = do result::chain(socket::bind_socket(h, config2.port))
-				|shandle|
-				{
-					do result::chain(socket::listen(shandle, 10i32))
-						|shandle| {attach(copy(config2), h, shandle)}
-				};
-				if result::is_err(r)
-				{
-					error!("Couldn't start web server at %s: %s", h, result::get_err(r));
-				}
-				comm::send(chan, 1u);
+				do result::chain(socket::listen(shandle, 10i32))
+					|shandle| {attach(config2, h, shandle)}
 			};
+			if result::is_err(r)
+			{
+				error!("Couldn't start web server at %s: %s", h, result::get_err(r));
+			}
+			comm::send(chan, 1u);
 		};
 	};
 	
@@ -47,7 +44,7 @@ fn start(+config: configuration::Config)
 	}
 }
 
-fn attach(+config: configuration::Config, host: ~str, shandle: @socket::socket_handle) -> Result<@socket::socket_handle, ~str>
+fn attach(config: configuration::Config, host: ~str, shandle: @socket::socket_handle) -> Result<@socket::socket_handle, ~str>
 {
 	info!("server is listening for new connections on %s:%?", host, config.port);
 	do result::chain(socket::accept(shandle))

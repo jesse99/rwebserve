@@ -31,7 +31,7 @@ struct ConnConfig
 	drop {}
 }
 
-fn config_to_conn(config: configuration::Config, push: comm::Chan<~str>) -> ConnConfig
+fn config_to_conn(config: &configuration::Config, push: comm::Chan<~str>) -> ConnConfig
 {
 	ConnConfig {
 		hosts: config.hosts,
@@ -54,7 +54,7 @@ fn config_to_conn(config: configuration::Config, push: comm::Chan<~str>) -> Conn
 }
 
 // TODO: probably want to use task::unsupervise
-fn handle_connection(++config: Config, fd: libc::c_int, local_addr: ~str, remote_addr: ~str)
+fn handle_connection(config: Config, fd: libc::c_int, local_addr: ~str, remote_addr: ~str)
 {
 	let sport = comm::Port();
 	let sch = comm::Chan(sport);
@@ -62,7 +62,7 @@ fn handle_connection(++config: Config, fd: libc::c_int, local_addr: ~str, remote
 	let ech = comm::Chan(eport);
 	let sock = @socket::socket_handle(fd);
 	
-	let iconfig = config_to_conn(config, ech);
+	let iconfig = config_to_conn(&config, ech);
 	let err = validate_config(iconfig);
 	if str::is_not_empty(err)
 	{
@@ -376,7 +376,7 @@ fn to_route(input: (~str, ~str, ~str)) -> Route
 #[test]
 fn routes_must_have_views()
 {
-	let config = {
+	let config = Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
@@ -386,7 +386,7 @@ fn routes_must_have_views()
 		
 	let eport = comm::Port();
 	let ech = comm::Chan(eport);
-	let iconfig = config_to_conn(config, ech);
+	let iconfig = config_to_conn(&config, ech);
 	
 	assert validate_config(iconfig) == ~"No views for the following routes: farewell, greeting";
 }
@@ -394,7 +394,7 @@ fn routes_must_have_views()
 #[test]
 fn views_must_have_routes()
 {
-	let config = {
+	let config = Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
@@ -404,7 +404,7 @@ fn views_must_have_routes()
 		
 	let eport = comm::Port();
 	let ech = comm::Chan(eport);
-	let iconfig = config_to_conn(config, ech);
+	let iconfig = config_to_conn(&config, ech);
 	
 	assert validate_config(iconfig) == ~"No routes for the following views: goodbye, greeting";
 }
@@ -412,7 +412,7 @@ fn views_must_have_routes()
 #[test]
 fn root_must_have_required_files()
 {
-	let config = {
+	let config = Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"/tmp"),
@@ -422,7 +422,7 @@ fn root_must_have_required_files()
 		
 	let eport = comm::Port();
 	let ech = comm::Chan(eport);
-	let iconfig = config_to_conn(config, ech);
+	let iconfig = config_to_conn(&config, ech);
 	
 	assert validate_config(iconfig) == ~"Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";
 }

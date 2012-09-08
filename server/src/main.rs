@@ -109,13 +109,13 @@ fn spawn_threaded_listener<A:send>(num_threads: uint, +block: fn~ (comm::Port<A>
 	comm::recv(channel_port)
 }
 
-fn home_view(_settings: hashmap<~str, ~str>, options: options, _request: server::Request, response: server::Response) -> server::Response
+fn home_view(_settings: hashmap<~str, ~str>, options: options, _request: &server::Request, response: &server::Response) -> server::Response
 {
 	response.context.insert(~"admin", mustache::Bool(options.admin));
 	{template: ~"home.html" , .. response}
 }
 
-fn greeting_view(_settings: hashmap<~str, ~str>, request: server::Request, response: server::Response) -> server::Response
+fn greeting_view(_settings: hashmap<~str, ~str>, request: &server::Request, response: &server::Response) -> server::Response
 {
 	response.context.insert(~"user-name", mustache::Str(@request.matches.get(~"name")));
 	{template: ~"hello.html" , .. response}
@@ -186,7 +186,7 @@ fn manage_state() -> StateChan
 // Each client connection that hits /uptime will cause an instance of this task to run. When
 // manage_state tells us that the world has changed we push the new world (an int in
 // this case) out to the client.
-fn uptime_sse(registrar: StateChan, request: server::Request, push: server::PushChan) -> server::ControlChan
+fn uptime_sse(registrar: StateChan, request: &server::Request, push: server::PushChan) -> server::ControlChan
 {
 	let seconds = request.params.get(~"units") == ~"s";
 	
