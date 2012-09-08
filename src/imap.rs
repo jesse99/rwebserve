@@ -1,5 +1,4 @@
 //! Simple immutable and sendable multimap.
-//use option::extensions;
 
 type IMap<K: copy, V: copy> = ~[(K, V)];
 

@@ -4,74 +4,6 @@
 use std::map::*;
 use path::{Path};
 use mustache::*;
-//use connection::{ConnConfig};
-//use request::{make_initial_response};
-
-// TODO: should be in connection.rs (see rust bug 3352)
-// Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.
-type ConnConfig =
-{
-	hosts: ~[~str],
-	port: u16,
-	server_info: ~str,
-	resources_root: Path,
-	route_list: ~[configuration::Route],
-	views_table: hashmap<~str, configuration::ResponseHandler>,
-	static: configuration::ResponseHandler,
-	sse_openers: hashmap<~str, OpenSse>,	// key is a GET path
-	sse_tasks: hashmap<~str, ControlChan>,	// key is a GET path
-	sse_push: comm::Chan<~str>,
-	missing: configuration::ResponseHandler,
-	static_type_table: hashmap<~str, ~str>,
-	read_error: ~str,
-	load_rsrc: configuration::RsrcLoader,
-	valid_rsrc: configuration::RsrcExists,
-	settings: hashmap<~str, ~str>,
-};
-
-// TODO: should be in connection.rs (see rust bug 3352)
-fn config_to_conn(config: configuration::Config, push: comm::Chan<~str>) -> ConnConfig
-{
-	{	hosts: config.hosts,
-		port: config.port,
-		server_info: config.server_info,
-		resources_root: config.resources_root,
-		route_list: vec::map(config.routes, connection::to_route),
-		views_table: std::map::hash_from_strs(config.views),
-		static: copy(config.static),
-		sse_openers: std::map::hash_from_strs(config.sse),
-		sse_tasks: std::map::str_hash(),
-		sse_push: push,
-		missing: copy(config.missing),
-		static_type_table: std::map::hash_from_strs(config.static_types),
-		read_error: config.read_error,
-		load_rsrc: copy(config.load_rsrc),
-		valid_rsrc: copy(config.valid_rsrc),
-		settings: std::map::hash_from_strs(config.settings)}
-}
-
-// TODO: should be in request.rs (see rust bug 3352)
-fn make_initial_response(config: ConnConfig, status_code: ~str, status_mesg: ~str, mime_type: ~str, request: configuration::Request) -> configuration::Response
-{
-	let headers = std::map::hash_from_strs(~[
-		(~"Content-Type", mime_type),
-		(~"Date", std::time::now_utc().rfc822()),
-		(~"Server", config.server_info),
-	]);
-	
-	if config.settings.contains_key(~"debug") && config.settings.get(~"debug") == ~"true"
-	{
-		headers.insert(~"Cache-Control", ~"no-cache");
-	}
-	
-	let context = std::map::box_str_hash();
-	context.insert(@~"request-path", mustache::Str(@request.path));
-	context.insert(@~"status-code", mustache::Str(@status_code));
-	context.insert(@~"status-mesg", mustache::Str(@status_mesg));
-	context.insert(@~"request-version", mustache::Str(@request.version));
-	
-	{status: status_code + ~" " + status_mesg, headers: headers, body: ~"", template: ~"", context: context}
-}
 
 /// Called by the server to spin up a task for an sse session. Returns a
 /// channel that the server uses to communicate with the task.
@@ -106,7 +38,7 @@ enum ControlEvent
 }
 
 // This is invoked when the client sends a GET on behalf of an event source.
-fn process_sse(config: ConnConfig, request: configuration::Request) -> (configuration::Response, ~str)
+fn process_sse(config: connection::ConnConfig, request: configuration::Request) -> (configuration::Response, ~str)
 {
 	let mut code = ~"200";
 	let mut mesg = ~"OK";
@@ -129,14 +61,14 @@ fn process_sse(config: ConnConfig, request: configuration::Request) -> (configur
 		}
 	}
 	
-	let response = make_initial_response(config, code, mesg, mime, request);
+	let response = request::make_initial_response(config, code, mesg, mime, request);
 	response.headers.insert(~"Transfer-Encoding", ~"chunked");
 	response.headers.insert(~"Cache-Control", ~"no-cache");
 	(response, ~"\n\n")
 }
 
 // TODO: Chrome, at least, doesn't seem to close EventSources so we need to time these out.
-fn OpenSse(config: ConnConfig, request: configuration::Request, push_data: PushChan) -> bool
+fn OpenSse(config: connection::ConnConfig, request: configuration::Request, push_data: PushChan) -> bool
 {
 	match config.sse_openers.find(request.path)
 	{
@@ -155,7 +87,7 @@ fn OpenSse(config: ConnConfig, request: configuration::Request, push_data: PushC
 	}
 }
 
-fn close_sses(config: ConnConfig)
+fn close_sses(config: connection::ConnConfig)
 {
 	info!("closing all sse");
 	for config.sse_tasks.each_value
@@ -165,7 +97,7 @@ fn close_sses(config: ConnConfig)
 	};
 }
 
-fn make_response(config: ConnConfig) -> configuration::Response
+fn make_response(config: connection::ConnConfig) -> configuration::Response
 {
 	let headers = std::map::hash_from_strs(~[
 		(~"Cache-Control", ~"no-cache"),

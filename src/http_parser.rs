@@ -5,14 +5,16 @@ use imap::*;
 
 export HttpRequest, make_parser;
 
-type HttpRequest = {
+type HttpRequest =
+{
 	method: ~str,					// per 5.1.1 these are case sensitive
 	major_version: int,
 	minor_version: int,
 	url: ~str,
 	headers: ~[(~str, ~str)],		// these are not case sensitive so we lower case them
-	body: ~str};					// set elsewhere
-	
+	body: ~str,						// set elsewhere
+};
+
 fn is_hex(octet: u8) -> bool
 {
 	let ch = octet as char;

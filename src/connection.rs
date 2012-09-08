@@ -4,10 +4,50 @@ use configuration::*;
 use http_parser::*;
 use imap::*;
 use request::{process_request, make_header_and_body};
-//use imap::{immutable_map, imap_methods};
 use sse::*;
 
 export handle_connection, ConnConfig, config_to_conn, to_route;
+
+// Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.
+type ConnConfig =
+{
+	hosts: ~[~str],
+	port: u16,
+	server_info: ~str,
+	resources_root: Path,
+	route_list: ~[configuration::Route],
+	views_table: hashmap<~str, configuration::ResponseHandler>,
+	static: configuration::ResponseHandler,
+	sse_openers: hashmap<~str, OpenSse>,	// key is a GET path
+	sse_tasks: hashmap<~str, ControlChan>,	// key is a GET path
+	sse_push: comm::Chan<~str>,
+	missing: configuration::ResponseHandler,
+	static_type_table: hashmap<~str, ~str>,
+	read_error: ~str,
+	load_rsrc: configuration::RsrcLoader,
+	valid_rsrc: configuration::RsrcExists,
+	settings: hashmap<~str, ~str>,
+};
+
+fn config_to_conn(config: configuration::Config, push: comm::Chan<~str>) -> ConnConfig
+{
+	{	hosts: config.hosts,
+		port: config.port,
+		server_info: config.server_info,
+		resources_root: config.resources_root,
+		route_list: vec::map(config.routes, connection::to_route),
+		views_table: std::map::hash_from_strs(config.views),
+		static: copy(config.static),
+		sse_openers: std::map::hash_from_strs(config.sse),
+		sse_tasks: std::map::str_hash(),
+		sse_push: push,
+		missing: copy(config.missing),
+		static_type_table: std::map::hash_from_strs(config.static_types),
+		read_error: config.read_error,
+		load_rsrc: copy(config.load_rsrc),
+		valid_rsrc: copy(config.valid_rsrc),
+		settings: std::map::hash_from_strs(config.settings)}
+}
 
 // TODO: probably want to use task::unsupervise
 fn handle_connection(++config: Config, fd: libc::c_int, local_addr: ~str, remote_addr: ~str)
