@@ -90,7 +90,7 @@ fn handle_connection(config: Config, fd: libc::c_int, local_addr: ~str, remote_a
 			either::Right(body) =>
 			{
 				let response = sse::make_response(iconfig);
-				let (_, body) = make_header_and_body(response, body);
+				let (_, body) = make_header_and_body(&response, body);
 				write_response(sock, ~"", body);
 			}
 		}
@@ -368,7 +368,7 @@ fn to_route(input: (~str, ~str, ~str)) -> Route
 					(template_str, ~"text/html")
 				};
 			
-			{method: method, template: uri_template::compile(template), mime_type: mime_type, route: route}
+			Route {method: method, template: uri_template::compile(template), mime_type: mime_type, route: route}
 		}
 	}
 }

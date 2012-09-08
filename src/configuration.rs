@@ -65,7 +65,7 @@ struct Request
 	let headers: hashmap<@~str, @~str>;
 	let body: ~str;
 	
-	drop {}
+	//drop {}			// TODO: enable this (was getting a compiler assert earlier)
 }
 
 /// Returned by view functions and used to generate http response messages.
@@ -78,15 +78,17 @@ struct Request
 /// 
 /// If template is not empty then body should be empty. If body is not empty then
 /// headers["Content-Type"] should usually be explicitly set.
-type Response =
+struct Response
 {
-	status: ~str,
-	headers: hashmap<~str, ~str>,
-	body: ~str,
-	template: ~str,				// an URL path is very similar to a path::PosixPath, but that is conditionally compiled in
-	context: hashmap<@~str, mustache::Data>,
-};
+	let status: ~str;
+	let headers: hashmap<@~str, @~str>;
+	let body: ~str;
+	let template: ~str;				// an URL path is very similar to a path::PosixPath, but that is conditionally compiled in
+	let context: hashmap<@~str, mustache::Data>;
 	
+	//drop {}			// TODO: enable this (was getting a compiler assert earlier)
+}
+
 /// Function used to generate an HTTP response.
 /// 
 /// On entry reponse.status will typically be set to \"200 OK\". response.headers will include something like the following:
@@ -115,7 +117,13 @@ type RsrcLoader = fn~ (path: &Path) -> result::Result<~str, ~str>;
 /// Returns true if a path rooted at resources_root points to a file.
 type RsrcExists = fn~ (path: &Path) -> bool;
 
-type Route = {method: ~str, template: ~[uri_template::Component], mime_type: ~str, route: ~str};
+struct Route
+{
+	let method: ~str;
+	let template: ~[uri_template::Component];
+	let mime_type: ~str;
+	let route: ~str;
+}
 
 /// Initalizes several config fields.
 /// 
@@ -187,12 +195,12 @@ fn is_valid_rsrc(path: &Path) -> bool
 fn static_view(_settings: hashmap<@~str, @~str>, _request: &Request, response: &Response) -> Response
 {
 	let path = mustache::render_str(~"{{request-path}}", response.context);
-	{body: ~"", template: path, context: std::map::box_str_hash(), ..*response}
+	Response {body: ~"", template: path, context: std::map::box_str_hash(), ..*response}
 }
 
 // Default config.missing handler. Assumes that there is a "not-found.html"
 // file at the resource root.
 fn missing_view(_settings: hashmap<@~str, @~str>, _request: &Request, response: &Response) -> Response
 {
-	{template: ~"not-found.html", ..*response}
+	Response {template: ~"not-found.html", ..*response}
 }

@@ -20,7 +20,7 @@ fn process_request(config: &connection::ConnConfig, request: HttpRequest, local_
 	let types = if request.headers.contains_key(@~"accept") {str::split_char(*request.headers.get(@~"accept"), ',')} else {~[~"text/html"]};
 	let (response, body) = get_body(config, &request, types);
 	
-	let (header, body) = make_header_and_body(response, body);
+	let (header, body) = make_header_and_body(&response, body);
 	debug!("response header: %s", header);
 	debug!("response body: %s", body);
 	
@@ -73,7 +73,7 @@ fn parse_url(url: ~str) -> (~str, imap::IMap<@~str, @~str>)
 
 fn make_initial_response(config: &connection::ConnConfig, status_code: ~str, status_mesg: ~str, mime_type: ~str, request: &configuration::Request) -> configuration::Response
 {
-	let headers = std::map::hash_from_strs(~[
+	let headers = utils::to_boxed_str_hash(~[
 		(~"Content-Type", mime_type),
 		(~"Date", std::time::now_utc().rfc822()),
 		(~"Server", config.server_info),
@@ -81,7 +81,7 @@ fn make_initial_response(config: &connection::ConnConfig, status_code: ~str, sta
 	
 	if config.settings.contains_key(@~"debug") && config.settings.get(@~"debug") == @~"true"
 	{
-		headers.insert(~"Cache-Control", ~"no-cache");
+		headers.insert(@~"Cache-Control", @~"no-cache");
 	}
 	
 	let context = std::map::box_str_hash();
@@ -90,10 +90,10 @@ fn make_initial_response(config: &connection::ConnConfig, status_code: ~str, sta
 	context.insert(@~"status-mesg", mustache::Str(@status_mesg));
 	context.insert(@~"request-version", mustache::Str(@request.version));
 	
-	{status: status_code + ~" " + status_mesg, headers: headers, body: ~"", template: ~"", context: context}
+	Response {status: status_code + ~" " + status_mesg, headers: headers, body: ~"", template: ~"", context: context}
 }
 
-fn make_header_and_body(response: Response, body: ~str) -> (~str, ~str)
+fn make_header_and_body(response: &Response, body: ~str) -> (~str, ~str)
 {
 	let mut headers = ~"";
 	let mut has_content_len = false;
@@ -102,22 +102,22 @@ fn make_header_and_body(response: Response, body: ~str) -> (~str, ~str)
 	for response.headers.each()
 	|name, value|
 	{
-		if name == ~"Content-Length"
+		if *name == ~"Content-Length"
 		{
 			has_content_len = true;
 		}
-		else if name == ~"Transfer-Encoding" && value == ~"chunked"
+		else if *name == ~"Transfer-Encoding" && *value == ~"chunked"
 		{
 			is_chunked = true;
 		}
 		
-		if name == ~"Content-Length" && value == ~"0"
+		if *name == ~"Content-Length" && *value == ~"0"
 		{
 			headers += fmt!("Content-Length: %?\r\n", str::len(body));
 		}
 		else
 		{
-			headers += fmt!("%s: %s\r\n", name, value);
+			headers += fmt!("%s: %s\r\n", *name, *value);
 		}
 	};
 	
@@ -155,7 +155,8 @@ fn get_body(config: &connection::ConnConfig, request: &Request, types: ~[~str]) 
 		}
 		else
 		{
-			(response, response.body)
+			let body = response.body;
+			(response, body)
 		}
 	}
 }
@@ -301,7 +302,7 @@ fn process_template(config: &connection::ConnConfig, response: &Response, reques
 			result::Ok(v) =>
 			{
 				// We found a legit template file.
-				(*response, v)
+				(Response {status: response.status, ..*response}, v)		// hacky way to return a new Response without a copy
 			}
 			result::Err(mesg) =>
 			{
@@ -326,7 +327,8 @@ fn process_template(config: &connection::ConnConfig, response: &Response, reques
 		let base_url = fmt!("http://%s:%?/%s/", request.local_addr, config.port, base_dir);
 		response.context.insert(@~"base-path", mustache::Str(@base_url));
 		
-		(response, mustache::render_str(body, response.context))
+		let body = mustache::render_str(body, response.context);
+		(response, body)
 	}
 	else
 	{
@@ -374,7 +376,7 @@ fn path_to_type(config: &connection::ConnConfig, path: ~str) -> ~str
 #[cfg(test)]
 fn test_view(_settings: hashmap<@~str, @~str>, _request: &Request, response: &Response) -> Response
 {
-	{template: ~"test.html", ..*response}
+	Response {template: ~"test.html", ..*response}
 }
 
 #[cfg(test)]

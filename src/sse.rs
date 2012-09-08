@@ -10,7 +10,7 @@ use mustache::*;
 ///
 /// The hashmap contains the config settings. The PushChan allows the
 /// task to push data to the client.
-type OpenSse = fn~ (hashmap<@~str, @~str>, request: &configuration::Request, PushChan) -> ControlChan;
+type OpenSse = fn~ (config: hashmap<@~str, @~str>, request: &configuration::Request, channel: PushChan) -> ControlChan;
 
 /// The channel used by server tasks to send data to a client.
 ///
@@ -62,8 +62,8 @@ fn process_sse(config: &connection::ConnConfig, request: &configuration::Request
 	}
 	
 	let response = request::make_initial_response(config, code, mesg, mime, request);
-	response.headers.insert(~"Transfer-Encoding", ~"chunked");
-	response.headers.insert(~"Cache-Control", ~"no-cache");
+	response.headers.insert(@~"Transfer-Encoding", @~"chunked");
+	response.headers.insert(@~"Cache-Control", @~"no-cache");
 	(response, ~"\n\n")
 }
 
@@ -99,7 +99,7 @@ fn close_sses(config: connection::ConnConfig)
 
 fn make_response(config: connection::ConnConfig) -> configuration::Response
 {
-	let headers = std::map::hash_from_strs(~[
+	let headers = utils::to_boxed_str_hash(~[
 		(~"Cache-Control", ~"no-cache"),
 		(~"Content-Type", ~"text/event-stream; charset=utf-8"),
 		(~"Date", std::time::now_utc().rfc822()),
@@ -107,6 +107,6 @@ fn make_response(config: connection::ConnConfig) -> configuration::Response
 		(~"Transfer-Encoding", ~"chunked"),
 	]);
 	
-	{status: ~"200 OK", headers: headers, body: ~"", template: ~"", context: std::map::box_str_hash()}
+	configuration::Response {status: ~"200 OK", headers: headers, body: ~"", template: ~"", context: std::map::box_str_hash()}
 }
 
