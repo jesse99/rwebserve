@@ -10,7 +10,7 @@ export process_request, make_header_and_body, make_initial_response;
 
 // TODO:
 // include last-modified and maybe etag
-fn process_request(config: connection::ConnConfig, request: HttpRequest, local_addr: ~str, remote_addr: ~str) -> (~str, ~str)
+fn process_request(config: &connection::ConnConfig, request: HttpRequest, local_addr: ~str, remote_addr: ~str) -> (~str, ~str)
 {
 	info!("Servicing %s for %s", request.method, utils::truncate_str(request.url, 80));
 	
@@ -71,7 +71,7 @@ fn parse_url(url: ~str) -> (~str, imap::IMap<~str, ~str>)
 	}
 }
 
-fn make_initial_response(config: connection::ConnConfig, status_code: ~str, status_mesg: ~str, mime_type: ~str, request: configuration::Request) -> configuration::Response
+fn make_initial_response(config: &connection::ConnConfig, status_code: ~str, status_mesg: ~str, mime_type: ~str, request: configuration::Request) -> configuration::Response
 {
 	let headers = std::map::hash_from_strs(~[
 		(~"Content-Type", mime_type),
@@ -79,7 +79,7 @@ fn make_initial_response(config: connection::ConnConfig, status_code: ~str, stat
 		(~"Server", config.server_info),
 	]);
 	
-	if config.settings.contains_key(~"debug") && config.settings.get(~"debug") == ~"true"
+	if config.settings.contains_key(@~"debug") && config.settings.get(@~"debug") == @~"true"
 	{
 		headers.insert(~"Cache-Control", ~"no-cache");
 	}
@@ -134,7 +134,7 @@ fn make_header_and_body(response: Response, body: ~str) -> (~str, ~str)
 		if is_chunked {fmt!("%X\r\n%s\r\n", str::len(body), body)} else {body})
 }
 
-fn get_body(config: connection::ConnConfig, request: Request, types: ~[~str]) -> (Response, ~str)
+fn get_body(config: &connection::ConnConfig, request: Request, types: ~[~str]) -> (Response, ~str)
 {
 	if vec::contains(types, ~"text/event-stream")
 	{
@@ -142,10 +142,10 @@ fn get_body(config: connection::ConnConfig, request: Request, types: ~[~str]) ->
 	}
 	else
 	{
-		let (status_code, status_mesg, mime_type, handler, matches) = find_handler(copy(config), request.method, request.path, types, request.version);
+		let (status_code, status_mesg, mime_type, handler, matches) = find_handler(config, request.method, request.path, types, request.version);
 		
 		let response = make_initial_response(config, status_code, status_mesg, mime_type, request);
-		let response = handler(config.settings, {matches: matches , .. request}, response);
+		let response = handler(config.settings, {matches: matches, ..request}, response);
 		
 		if str::is_not_empty(response.template.to_str())
 		{
@@ -160,7 +160,7 @@ fn get_body(config: connection::ConnConfig, request: Request, types: ~[~str]) ->
 	}
 }
 
-fn find_handler(+config: connection::ConnConfig, method: ~str, request_path: ~str, types: ~[~str], version: ~str) -> (~str, ~str, ~str, ResponseHandler, hashmap<~str, ~str>)
+fn find_handler(config: &connection::ConnConfig, method: ~str, request_path: ~str, types: ~[~str], version: ~str) -> (~str, ~str, ~str, ResponseHandler, hashmap<~str, ~str>)
 {
 	let mut handler = option::None;
 	let mut status_code = ~"200";
@@ -173,7 +173,7 @@ fn find_handler(+config: connection::ConnConfig, method: ~str, request_path: ~st
 	{
 		status_code = ~"505";
 		status_mesg = ~"HTTP Version Not Supported";
-		let (_, _, _, h, _) = find_handler(copy(config), method, ~"not-supported.html", ~[~"types/html"], ~"1.1");
+		let (_, _, _, h, _) = find_handler(config, method, ~"not-supported.html", ~[~"types/html"], ~"1.1");
 		handler = option::Some(h);
 		info!("responding with %s %s", status_code, status_mesg);
 	}
@@ -191,7 +191,7 @@ fn find_handler(+config: connection::ConnConfig, method: ~str, request_path: ~st
 				if vec::contains(types, ~"*/*") || vec::contains(types, mime_type)
 				{
 					result_type = mime_type + ~"; charset=UTF-8";
-					handler = option::Some(copy(config.static));
+					handler = option::Some(copy config.static_handlers);
 				}
 			}
 		}
@@ -199,7 +199,7 @@ fn find_handler(+config: connection::ConnConfig, method: ~str, request_path: ~st
 		{
 			status_code = ~"403";			// don't allow access to files not under resources_root
 			status_mesg = ~"Forbidden";
-			let (_, _, _, h, _) = find_handler(copy(config), method, ~"forbidden.html", ~[~"types/html"], version);
+			let (_, _, _, h, _) = find_handler(config, method, ~"forbidden.html", ~[~"types/html"], version);
 			handler = option::Some(h);
 			info!("responding with %s %s (path wasn't under resources_root)", status_code, status_mesg);
 		}
@@ -218,7 +218,7 @@ fn find_handler(+config: connection::ConnConfig, method: ~str, request_path: ~st
 				{
 					if vec::contains(types, entry.mime_type)
 					{
-						handler = option::Some(config.views_table.get(entry.route));
+						handler = option::Some(config.views_table.get(@entry.route));
 						result_type = entry.mime_type + ~"; charset=UTF-8";
 						matches = m;
 						break;
@@ -244,7 +244,7 @@ fn find_handler(+config: connection::ConnConfig, method: ~str, request_path: ~st
 	return (status_code, status_mesg, result_type, option::get(handler), matches);
 }
 
-fn load_template(config: connection::ConnConfig, path: &Path) -> result::Result<~str, ~str>
+fn load_template(config: &connection::ConnConfig, path: &Path) -> result::Result<~str, ~str>
 {
 	// {{ should be followed by }} (rust-mustache hangs if this is not the case).
 	fn match_curly_braces(text: ~str) -> bool
@@ -281,7 +281,7 @@ fn load_template(config: connection::ConnConfig, path: &Path) -> result::Result<
 	do result::chain(config.load_rsrc(path))
 	|template|
 	{
-		if !config.settings.contains_key(~"debug") || config.settings.get(~"debug") == ~"false" || match_curly_braces(template)
+		if !config.settings.contains_key(@~"debug") || config.settings.get(@~"debug") == @~"false" || match_curly_braces(template)
 		{
 			result::Ok(template)
 		}
@@ -292,7 +292,7 @@ fn load_template(config: connection::ConnConfig, path: &Path) -> result::Result<
 	}
 }
 
-fn process_template(config: connection::ConnConfig, response: Response, request: Request) -> (Response, ~str)
+fn process_template(config: &connection::ConnConfig, response: Response, request: Request) -> (Response, ~str)
 {
 	let path = utils::url_to_path(&config.resources_root, response.template);
 	let (response, body) =
@@ -343,7 +343,7 @@ fn url_dirname(path: &str) -> ~str
 	}
 }
 
-fn path_to_type(config: connection::ConnConfig, path: ~str) -> ~str
+fn path_to_type(config: &connection::ConnConfig, path: ~str) -> ~str
 {
 	let p: path::Path = path::from_str(path);
 	let extension: Option<~str> = p.filetype();
@@ -351,11 +351,11 @@ fn path_to_type(config: connection::ConnConfig, path: ~str) -> ~str
 	{
 		assert extension.get().char_at(0) != '.';
 		
-		match config.static_type_table.find(~"." + extension.get())
+		match config.static_type_table.find(@(~"." + extension.get()))
 		{
 			option::Some(v) =>
 			{
-				v
+				*v
 			}
 			option::None =>
 			{
@@ -372,7 +372,7 @@ fn path_to_type(config: connection::ConnConfig, path: ~str) -> ~str
 }
 
 #[cfg(test)]
-fn test_view(_settings: hashmap<~str, ~str>, _request: Request, response: Response) -> Response
+fn test_view(_settings: hashmap<@~str, @~str>, _request: Request, response: Response) -> Response
 {
 	{template: ~"test.html", ..response}
 }
@@ -399,7 +399,7 @@ fn make_request(url: ~str, mime_type: ~str) -> HttpRequest
 		(~"accept-Language", ~"en-us,en"),
 		(~"accept-encoding", ~"gzip, deflate"),
 		(~"connection", ~"keep-alive")];
-	{method: ~"GET", major_version: 1, minor_version: 1, url: url, headers: headers, body: ~""}
+	HttpRequest {method: ~"GET", major_version: 1, minor_version: 1, url: url, headers: headers, body: ~""}
 }
 
 #[test]
@@ -419,7 +419,7 @@ fn html_route()
 	let iconfig = connection::config_to_conn(config, ech);
 	
 	let request = make_request(~"/foo/bar", ~"text/html");
-	let (_header, body) = process_request(iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (_header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert body == ~"server/html/test.html contents";
 }
@@ -441,7 +441,7 @@ fn route_with_bad_type()
 	let iconfig = connection::config_to_conn(config, ech);
 	
 	let request = make_request(~"/foo/bar", ~"text/zzz");
-	let (header, body) = process_request(iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("404 Not Found");
 	assert header.contains("Content-Type: text/html");
@@ -465,7 +465,7 @@ fn non_html_route()
 	let iconfig = connection::config_to_conn(config, ech);
 	
 	let request = make_request(~"/foo/bar", ~"text/csv");
-	let (_header, body) = process_request(iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (_header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert body == ~"server/html/test.html contents";
 }
@@ -488,7 +488,7 @@ fn static_route()
 	let iconfig = connection::config_to_conn(config, ech);
 	
 	let request = make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg");
-	let (header, body) = process_request(iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("Content-Type: image/jpeg");
 	assert body == ~"server/html/foo/baz.jpg contents";
@@ -512,7 +512,7 @@ fn static_with_bad_type()
 	let iconfig = connection::config_to_conn(config, ech);
 	
 	let request = make_request(~"/foo/baz.jpg", ~"text/zzz");
-	let (header, body) = process_request(iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert body == ~"server/html/not-found.html contents";
@@ -536,7 +536,7 @@ fn bad_url()
 	let iconfig = connection::config_to_conn(config, ech);
 	
 	let request = make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg");
-	let (header, body) = process_request(iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("404 Not Found");
@@ -561,7 +561,7 @@ fn path_outside_root()
 	let iconfig = connection::config_to_conn(config, ech);
 	
 	let request = make_request(~"/foo/../../baz.jpg", ~"text/html,image/jpeg");
-	let (header, body) = process_request(iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("403 Forbidden");
@@ -586,7 +586,7 @@ fn read_error()
 	let iconfig = connection::config_to_conn(config, ech);
 	
 	let request = make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg");
-	let (header, body) = process_request(iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("403 Forbidden");
@@ -610,8 +610,8 @@ fn bad_version()
 	let ech = comm::Chan(eport);
 	let iconfig = connection::config_to_conn(config, ech);
 	
-	let request = {major_version: 100 , .. make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg")};
-	let (header, body) = process_request(iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let request = HttpRequest {major_version: 100 , .. make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg")};
+	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("505 HTTP Version Not Supported");
@@ -641,7 +641,7 @@ fn bad_template()
 	let ech = comm::Chan(eport);
 	let iconfig = connection::config_to_conn(config, ech);
 	
-	match load_template(iconfig, &path::from_str(~"blah.html"))
+	match load_template(&iconfig, &path::from_str(~"blah.html"))
 	{
 		result::Ok(v) =>
 		{

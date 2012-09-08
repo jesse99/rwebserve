@@ -32,7 +32,7 @@ type Config =
 	resources_root: Path,
 	routes: ~[(~str, ~str, ~str)],					// better to use hashmap, but hashmaps cannot be sent
 	views: ~[(~str, ResponseHandler)],
-	static: ResponseHandler,
+	static_handlers: ResponseHandler,
 	sse: ~[(~str, OpenSse)],
 	missing: ResponseHandler,
 	static_types: ~[(~str, ~str)],
@@ -105,7 +105,7 @@ type Response =
 /// * context: new entries will often be added. If template is not actually a template file empty the context.
 /// 
 /// After the function returns a base-path entry is added to the response.context with the url to the directory containing the template file.
-type ResponseHandler = fn~ (hashmap<~str, ~str>, Request, Response) -> Response;
+type ResponseHandler = fn~ (hashmap<@~str, @~str>, Request, Response) -> Response;
 
 /// Maps a path rooted at resources_root to a resource body.
 type RsrcLoader = fn~ (path: &Path) -> result::Result<~str, ~str>;
@@ -133,7 +133,7 @@ fn initialize_config() -> Config
 	resources_root: path::from_str(~""),
 	routes: ~[],
 	views: ~[],
-	static: static_view,
+	static_handlers: static_view,
 	sse: ~[],
 	missing: missing_view,
 	static_types: ~[
@@ -180,7 +180,7 @@ fn is_valid_rsrc(path: &Path) -> bool
 }
 
 // Default config.static view handler.
-fn static_view(_settings: hashmap<~str, ~str>, _request: Request, response: Response) -> Response
+fn static_view(_settings: hashmap<@~str, @~str>, _request: Request, response: Response) -> Response
 {
 	let path = mustache::render_str(~"{{request-path}}", response.context);
 	{body: ~"", template: path, context: std::map::box_str_hash(), ..response}
@@ -188,7 +188,7 @@ fn static_view(_settings: hashmap<~str, ~str>, _request: Request, response: Resp
 
 // Default config.missing handler. Assumes that there is a "not-found.html"
 // file at the resource root.
-fn missing_view(_settings: hashmap<~str, ~str>, _request: Request, response: Response) -> Response
+fn missing_view(_settings: hashmap<@~str, @~str>, _request: Request, response: Response) -> Response
 {
 	{template: ~"not-found.html", ..response}
 }

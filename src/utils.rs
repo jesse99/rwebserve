@@ -1,5 +1,6 @@
 //! Misc functions used internally.
 use io::WriterUtil;
+use std::map::*;
 use path::Path;
 
 // The url should be the path component of an URL. It will usually be
@@ -17,6 +18,28 @@ fn url_to_path(root: &Path, url: &str) -> Path
 		}
 	);
 	root.push_rel(&path)
+}
+
+fn boxed_hash_from_strs<V: copy>(items: &[(~str, V)]) -> hashmap<@~str, V>
+{
+	let table = box_str_hash();
+	for items.each
+	|item|
+	{
+		table.insert(@item.first(), item.second());
+	}
+	table
+}
+
+fn to_boxed_str_hash(items: &[(~str, ~str)]) -> hashmap<@~str, @~str>
+{
+	let table = box_str_hash();
+	for items.each
+	|item|
+	{
+		table.insert(@item.first(), @item.second());
+	}
+	table
 }
 
 fn dump_string(title: ~str, text: ~str)

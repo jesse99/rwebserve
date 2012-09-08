@@ -5,15 +5,16 @@ use imap::*;
 
 export HttpRequest, make_parser;
 
-type HttpRequest =
+// This needs to be a sendable type.
+struct HttpRequest
 {
-	method: ~str,					// per 5.1.1 these are case sensitive
-	major_version: int,
-	minor_version: int,
-	url: ~str,
-	headers: ~[(~str, ~str)],		// these are not case sensitive so we lower case them
-	body: ~str,						// set elsewhere
-};
+	let method: ~str;				// per 5.1.1 these are case sensitive
+	let major_version: int;
+	let minor_version: int;
+	let url: ~str;
+	let headers: ~[(~str, ~str)];		// these are not case sensitive so we lower case them
+	let body: ~str;					// set elsewhere
+}
 
 fn is_hex(octet: u8) -> bool
 {
@@ -113,7 +114,7 @@ fn request_parser() -> Parser<HttpRequest>
 		|a1, h, _a2|
 		{
 			let (n, u, (v1, v2)) = a1;
-			result::Ok({method: *n, major_version: v1, minor_version: v2, url: decode(*u), headers: *h, body: ~""})};
+			result::Ok(HttpRequest {method: *n, major_version: v1, minor_version: v2, url: decode(*u), headers: *h, body: ~""})};
 	
 	return request;
 }

@@ -10,7 +10,7 @@ use mustache::*;
 ///
 /// The hashmap contains the config settings. The PushChan allows the
 /// task to push data to the client.
-type OpenSse = fn~ (hashmap<~str, ~str>, request: configuration::Request, PushChan) -> ControlChan;
+type OpenSse = fn~ (hashmap<@~str, @~str>, request: configuration::Request, PushChan) -> ControlChan;
 
 /// The channel used by server tasks to send data to a client.
 ///
@@ -38,13 +38,13 @@ enum ControlEvent
 }
 
 // This is invoked when the client sends a GET on behalf of an event source.
-fn process_sse(config: connection::ConnConfig, request: configuration::Request) -> (configuration::Response, ~str)
+fn process_sse(config: &connection::ConnConfig, request: configuration::Request) -> (configuration::Response, ~str)
 {
 	let mut code = ~"200";
 	let mut mesg = ~"OK";
 	let mut mime = ~"text/event-stream; charset=utf-8";
 	
-	match config.sse_tasks.find(request.path)
+	match config.sse_tasks.find(@request.path)
 	{
 		option::Some(sse) =>
 		{
@@ -68,15 +68,15 @@ fn process_sse(config: connection::ConnConfig, request: configuration::Request) 
 }
 
 // TODO: Chrome, at least, doesn't seem to close EventSources so we need to time these out.
-fn OpenSse(config: connection::ConnConfig, request: configuration::Request, push_data: PushChan) -> bool
+fn OpenSse(config: &connection::ConnConfig, request: configuration::Request, push_data: PushChan) -> bool
 {
-	match config.sse_openers.find(request.path)
+	match config.sse_openers.find(@request.path)
 	{
 		option::Some(opener) =>
 		{
 			info!("opening sse for %s", request.path);
 			let sse = opener(config.settings, request, push_data);
-			config.sse_tasks.insert(request.path, sse);
+			config.sse_tasks.insert(@request.path, sse);
 			true
 		}
 		option::None =>

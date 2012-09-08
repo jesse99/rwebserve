@@ -9,44 +9,48 @@ use sse::*;
 export handle_connection, ConnConfig, config_to_conn, to_route;
 
 // Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.
-type ConnConfig =
+struct ConnConfig
 {
-	hosts: ~[~str],
-	port: u16,
-	server_info: ~str,
-	resources_root: Path,
-	route_list: ~[configuration::Route],
-	views_table: hashmap<~str, configuration::ResponseHandler>,
-	static: configuration::ResponseHandler,
-	sse_openers: hashmap<~str, OpenSse>,	// key is a GET path
-	sse_tasks: hashmap<~str, ControlChan>,	// key is a GET path
-	sse_push: comm::Chan<~str>,
-	missing: configuration::ResponseHandler,
-	static_type_table: hashmap<~str, ~str>,
-	read_error: ~str,
-	load_rsrc: configuration::RsrcLoader,
-	valid_rsrc: configuration::RsrcExists,
-	settings: hashmap<~str, ~str>,
-};
+	let hosts: ~[~str];
+	let port: u16;
+	let server_info: ~str;
+	let resources_root: Path;
+	let route_list: ~[configuration::Route];
+	let views_table: hashmap<@~str, configuration::ResponseHandler>;
+	let static_handlers: configuration::ResponseHandler;
+	let sse_openers: hashmap<@~str, OpenSse>;		// key is a GET path
+	let sse_tasks: hashmap<@~str, ControlChan>;	// key is a GET path
+	let sse_push: comm::Chan<~str>;
+	let missing: configuration::ResponseHandler;
+	let static_type_table: hashmap<@~str, @~str>;
+	let read_error: ~str;
+	let load_rsrc: configuration::RsrcLoader;
+	let valid_rsrc: configuration::RsrcExists;
+	let settings: hashmap<@~str, @~str>;
+	
+	drop {}
+}
 
 fn config_to_conn(config: configuration::Config, push: comm::Chan<~str>) -> ConnConfig
 {
-	{	hosts: config.hosts,
+	ConnConfig {
+		hosts: config.hosts,
 		port: config.port,
 		server_info: config.server_info,
 		resources_root: config.resources_root,
 		route_list: vec::map(config.routes, connection::to_route),
-		views_table: std::map::hash_from_strs(config.views),
-		static: copy(config.static),
-		sse_openers: std::map::hash_from_strs(config.sse),
-		sse_tasks: std::map::str_hash(),
+		views_table: utils::boxed_hash_from_strs(config.views),
+		static_handlers: copy(config.static_handlers),
+		sse_openers: utils::boxed_hash_from_strs(config.sse),
+		sse_tasks: std::map::box_str_hash(),
 		sse_push: push,
 		missing: copy(config.missing),
-		static_type_table: std::map::hash_from_strs(config.static_types),
+		static_type_table: utils::to_boxed_str_hash(config.static_types),
 		read_error: config.read_error,
 		load_rsrc: copy(config.load_rsrc),
 		valid_rsrc: copy(config.valid_rsrc),
-		settings: std::map::hash_from_strs(config.settings)}
+		settings: utils::to_boxed_str_hash(config.settings),
+	}
 }
 
 // TODO: probably want to use task::unsupervise
@@ -75,7 +79,7 @@ fn handle_connection(++config: Config, fd: libc::c_int, local_addr: ~str, remote
 		{
 			either::Left(option::Some(request)) =>
 			{
-				let (header, body) = process_request(iconfig, request, local_addr, remote_addr);
+				let (header, body) = process_request(&iconfig, request, local_addr, remote_addr);
 				write_response(sock, header, body);
 			}
 			either::Left(option::None) =>
@@ -111,7 +115,7 @@ fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<option::Op
 						let body = read_body(sock, request.headers.get(~"content-length"));
 						if str::is_not_empty(body)
 						{
-							comm::send(poke, option::Some({body: body , .. request}));
+							comm::send(poke, option::Some(HttpRequest {body: body, ..request}));
 						}
 						else
 						{
@@ -120,7 +124,7 @@ fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<option::Op
 					}
 					else
 					{
-						comm::send(poke, option::Some(request));
+						comm::send(poke, option::Some(copy request));
 					}
 				}
 				result::Err(mesg) =>
@@ -312,7 +316,7 @@ fn validate_config(config: ConnConfig) -> ~str
 	|entry|
 	{
 		let route = entry.route;
-		if !config.views_table.contains_key(route)
+		if !config.views_table.contains_key(@route)
 		{
 			vec::push(missing_routes, route);
 		}
@@ -330,9 +334,9 @@ fn validate_config(config: ConnConfig) -> ~str
 	for config.views_table.each_key()
 	|route|
 	{
-		if !vec::contains(routes, route)
+		if !vec::contains(routes, *route)
 		{
-			vec::push(missing_views, route);
+			vec::push(missing_views, *route);
 		}
 	};
 	if vec::is_not_empty(missing_views)
