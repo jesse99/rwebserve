@@ -7,7 +7,7 @@ export start;
 /// Startup the server.
 /// 
 /// Currently this will run until a client does a GET on '/shutdown' in which case exit is called.
-fn start(+config: configuration::config)
+fn start(+config: configuration::Config)
 {
 	let port = comm::Port::<uint>();
 	let chan = comm::Chan::<uint>(port);
@@ -47,7 +47,7 @@ fn start(+config: configuration::config)
 	}
 }
 
-fn attach(+config: configuration::config, host: ~str, shandle: @socket::socket_handle) -> Result<@socket::socket_handle, ~str>
+fn attach(+config: configuration::Config, host: ~str, shandle: @socket::socket_handle) -> Result<@socket::socket_handle, ~str>
 {
 	info!("server is listening for new connections on %s:%?", host, config.port);
 	do result::chain(socket::accept(shandle))

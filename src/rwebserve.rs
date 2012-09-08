@@ -25,10 +25,10 @@ use imap_methods = imap::imap_methods; export imap_methods;
 
 use start = server::start; export start;
 
-use open_sse = sse::open_sse; export open_sse;
-use push_chan = sse::push_chan; export push_chan;
-use control_port = sse::control_port; export control_port;
-use control_chan = sse::control_chan; export control_chan;
-use control_event = sse::control_event; export control_event;
-use refresh_event = sse::refresh_event; export refresh_event;
-use close_event = sse::close_event; export close_event;
+use OpenSse = sse::OpenSse; export OpenSse;
+use PushChan = sse::PushChan; export PushChan;
+use ControlPort = sse::ControlPort; export ControlPort;
+use ControlChan = sse::ControlChan; export ControlChan;
+use ControlEvent = sse::ControlEvent; export ControlEvent;
+use RefreshEvent = sse::RefreshEvent; export RefreshEvent;
+use CloseEvent = sse::CloseEvent; export CloseEvent;

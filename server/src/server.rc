@@ -5,7 +5,12 @@
 #[license = "MIT"];
 #[doc = "Sample rrest web server"];
 
-#[warn(no_non_implicitly_copyable_typarams, no_vecs_not_implicitly_copyable)];	// , no_old_vecs
+#[allow(non_camel_case_types)];
+#[allow(implicit_copies)];
+#[allow(deprecated_mode)];
+#[allow(non_implicitly_copyable_typarams)];
+#[allow(deprecated_pattern)];
+#[allow(unused_imports)];
 
 use std;
 use mustache (name = "mustache", vers = "0.1");

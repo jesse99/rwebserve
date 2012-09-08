@@ -3,9 +3,9 @@ use rparse::rparse::*;
 use std::map;
 use imap::*;
 
-export http_request, make_parser;
+export HttpRequest, make_parser;
 
-type http_request = {
+type HttpRequest = {
 	method: ~str,					// per 5.1.1 these are case sensitive
 	major_version: int,
 	minor_version: int,
@@ -75,7 +75,7 @@ fn decode(url: ~str) -> ~str
 // TODO: 
 // Server, User-Agent, and Via values can have comments
 // double quotes can be used with header values that use separators
-fn request_parser() -> Parser<http_request>
+fn request_parser() -> Parser<HttpRequest>
 {
 	let ws = " \t".anyc();
 	let lws = ws.r0();
@@ -117,7 +117,7 @@ fn request_parser() -> Parser<http_request>
 }
 
 // We return a closure so that we can build the parser just once.
-fn make_parser() -> fn@ (~str) -> result::Result<http_request, ~str>
+fn make_parser() -> fn@ (~str) -> result::Result<HttpRequest, ~str>
 {
 	|request: ~str|
 	{

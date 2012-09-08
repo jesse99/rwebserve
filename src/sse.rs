@@ -4,33 +4,33 @@
 use std::map::*;
 use path::{Path};
 use mustache::*;
-//use connection::{conn_config};
+//use connection::{ConnConfig};
 //use request::{make_initial_response};
 
 // TODO: should be in connection.rs (see rust bug 3352)
 // Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.
-type conn_config =
+type ConnConfig =
 {
 	hosts: ~[~str],
 	port: u16,
 	server_info: ~str,
 	resources_root: Path,
-	route_list: ~[configuration::route],
-	views_table: hashmap<~str, configuration::response_handler>,
-	static: configuration::response_handler,
-	sse_openers: hashmap<~str, open_sse>,	// key is a GET path
-	sse_tasks: hashmap<~str, control_chan>,	// key is a GET path
+	route_list: ~[configuration::Route],
+	views_table: hashmap<~str, configuration::ResponseHandler>,
+	static: configuration::ResponseHandler,
+	sse_openers: hashmap<~str, OpenSse>,	// key is a GET path
+	sse_tasks: hashmap<~str, ControlChan>,	// key is a GET path
 	sse_push: comm::Chan<~str>,
-	missing: configuration::response_handler,
+	missing: configuration::ResponseHandler,
 	static_type_table: hashmap<~str, ~str>,
 	read_error: ~str,
-	load_rsrc: configuration::rsrc_loader,
-	valid_rsrc: configuration::rsrc_exists,
+	load_rsrc: configuration::RsrcLoader,
+	valid_rsrc: configuration::RsrcExists,
 	settings: hashmap<~str, ~str>,
 };
 
 // TODO: should be in connection.rs (see rust bug 3352)
-fn config_to_conn(config: configuration::config, push: comm::Chan<~str>) -> conn_config
+fn config_to_conn(config: configuration::Config, push: comm::Chan<~str>) -> ConnConfig
 {
 	{	hosts: config.hosts,
 		port: config.port,
@@ -51,7 +51,7 @@ fn config_to_conn(config: configuration::config, push: comm::Chan<~str>) -> conn
 }
 
 // TODO: should be in request.rs (see rust bug 3352)
-fn make_initial_response(config: conn_config, status_code: ~str, status_mesg: ~str, mime_type: ~str, request: configuration::request) -> configuration::response
+fn make_initial_response(config: ConnConfig, status_code: ~str, status_mesg: ~str, mime_type: ~str, request: configuration::Request) -> configuration::Response
 {
 	let headers = std::map::hash_from_strs(~[
 		(~"Content-Type", mime_type),
@@ -76,37 +76,37 @@ fn make_initial_response(config: conn_config, status_code: ~str, status_mesg: ~s
 /// Called by the server to spin up a task for an sse session. Returns a
 /// channel that the server uses to communicate with the task.
 ///
-/// The hashmap contains the config settings. The push_chan allows the
+/// The hashmap contains the config settings. The PushChan allows the
 /// task to push data to the client.
-type open_sse = fn~ (hashmap<~str, ~str>, request: configuration::request, push_chan) -> control_chan;
+type OpenSse = fn~ (hashmap<~str, ~str>, request: configuration::Request, PushChan) -> ControlChan;
 
 /// The channel used by server tasks to send data to a client.
 ///
 /// In the simplest case the data would contain a single line with the format: 
 /// "data: arbitrary text\n". For more details see [event stream](http://dev.w3.org/html5/eventsource/#event-stream-interpretation).
-type push_chan = comm::Chan<~str>;
+type PushChan = comm::Chan<~str>;
 
 /// The port sse tasks use to respond to events from the server.
-type control_port = comm::Port<control_event>;
+type ControlPort = comm::Port<ControlEvent>;
 
 /// The channel used by the server to communicate with sse tasks.
-type control_chan = comm::Chan<control_event>;
+type ControlChan = comm::Chan<ControlEvent>;
 
-/// The data sent by the control_chan to a task.
+/// The data sent by the ControlChan to a task.
 ///
-/// refresh_event will be sent according to the reconnection time used by the
+/// RefreshEvent will be sent according to the reconnection time used by the
 /// client (typically 3s if not set using a retry field in the pushed data).
 ///
-/// close_event will be sent if the tcp connection is dropped or the client
+/// CloseEvent will be sent if the tcp connection is dropped or the client
 /// closes the EventSource.
-enum control_event
+enum ControlEvent
 {
-	refresh_event,
-	close_event,
+	RefreshEvent,
+	CloseEvent,
 }
 
 // This is invoked when the client sends a GET on behalf of an event source.
-fn process_sse(config: conn_config, request: configuration::request) -> (configuration::response, ~str)
+fn process_sse(config: ConnConfig, request: configuration::Request) -> (configuration::Response, ~str)
 {
 	let mut code = ~"200";
 	let mut mesg = ~"OK";
@@ -116,11 +116,11 @@ fn process_sse(config: conn_config, request: configuration::request) -> (configu
 	{
 		option::Some(sse) =>
 		{
-			comm::send(sse, refresh_event);
+			comm::send(sse, RefreshEvent);
 		}
 		option::None =>
 		{
-			if !open_sse(config, request, config.sse_push)
+			if !OpenSse(config, request, config.sse_push)
 			{
 				code = ~"404";
 				mesg = ~"Not Found";
@@ -136,7 +136,7 @@ fn process_sse(config: conn_config, request: configuration::request) -> (configu
 }
 
 // TODO: Chrome, at least, doesn't seem to close EventSources so we need to time these out.
-fn open_sse(config: conn_config, request: configuration::request, push_data: push_chan) -> bool
+fn OpenSse(config: ConnConfig, request: configuration::Request, push_data: PushChan) -> bool
 {
 	match config.sse_openers.find(request.path)
 	{
@@ -155,17 +155,17 @@ fn open_sse(config: conn_config, request: configuration::request, push_data: pus
 	}
 }
 
-fn close_sses(config: conn_config)
+fn close_sses(config: ConnConfig)
 {
 	info!("closing all sse");
 	for config.sse_tasks.each_value
 	|control_ch|
 	{
-		comm::send(control_ch, close_event);
+		comm::send(control_ch, CloseEvent);
 	};
 }
 
-fn make_response(config: conn_config) -> configuration::response
+fn make_response(config: ConnConfig) -> configuration::Response
 {
 	let headers = std::map::hash_from_strs(~[
 		(~"Cache-Control", ~"no-cache"),

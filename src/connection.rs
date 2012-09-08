@@ -7,10 +7,10 @@ use request::{process_request, make_header_and_body};
 //use imap::{immutable_map, imap_methods};
 use sse::*;
 
-export handle_connection, conn_config, config_to_conn, to_route;
+export handle_connection, ConnConfig, config_to_conn, to_route;
 
 // TODO: probably want to use task::unsupervise
-fn handle_connection(++config: config, fd: libc::c_int, local_addr: ~str, remote_addr: ~str)
+fn handle_connection(++config: Config, fd: libc::c_int, local_addr: ~str, remote_addr: ~str)
 {
 	let sport = comm::Port();
 	let sch = comm::Chan(sport);
@@ -53,7 +53,7 @@ fn handle_connection(++config: config, fd: libc::c_int, local_addr: ~str, remote
 	}
 }
 
-fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<option::Option<http_request>>)
+fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<option::Option<HttpRequest>>)
 {
 	let sock = @socket::socket_handle(fd);		// socket::socket_handle(fd);
 	let parse = make_parser();
@@ -209,7 +209,7 @@ fn write_response(sock: @socket::socket_handle, header: ~str, body: ~str)
 	do str::as_buf(data) |buffer, _len| {socket::send_buf(sock, buffer, str::len(data))};
 }
 
-fn validate_config(config: conn_config) -> ~str
+fn validate_config(config: ConnConfig) -> ~str
 {
 	let mut errors = ~[];
 	
@@ -306,7 +306,7 @@ fn validate_config(config: conn_config) -> ~str
 	return str::connect(errors, ~" ");
 }
 
-fn to_route(input: (~str, ~str, ~str)) -> route
+fn to_route(input: (~str, ~str, ~str)) -> Route
 {
 	match input
 	{

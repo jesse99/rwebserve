@@ -2,16 +2,16 @@
 use io::WriterUtil;
 use imap::*;
 use configuration::*;
-use http_parser::{http_request};
+use http_parser::{HttpRequest};
 use sse::{process_sse};
-use sse::{conn_config, config_to_conn};
+use sse::{ConnConfig, config_to_conn};
 use utils::*;
 
 export process_request, make_header_and_body, make_initial_response;
 
 // TODO:
 // include last-modified and maybe etag
-fn process_request(config: conn_config, request: http_request, local_addr: ~str, remote_addr: ~str) -> (~str, ~str)
+fn process_request(config: ConnConfig, request: HttpRequest, local_addr: ~str, remote_addr: ~str) -> (~str, ~str)
 {
 	info!("Servicing %s for %s", request.method, utils::truncate_str(request.url, 80));
 	
@@ -28,7 +28,7 @@ fn process_request(config: conn_config, request: http_request, local_addr: ~str,
 	(header, body)
 }
 
-fn parse_url(url: ~str) -> (~str, imap::imap<~str, ~str>)
+fn parse_url(url: ~str) -> (~str, imap::IMap<~str, ~str>)
 {
 	match str::find_char(url, '?')
 	{
@@ -72,7 +72,7 @@ fn parse_url(url: ~str) -> (~str, imap::imap<~str, ~str>)
 	}
 }
 
-fn make_header_and_body(response: response, body: ~str) -> (~str, ~str)
+fn make_header_and_body(response: Response, body: ~str) -> (~str, ~str)
 {
 	let mut headers = ~"";
 	let mut has_content_len = false;
@@ -113,7 +113,7 @@ fn make_header_and_body(response: response, body: ~str) -> (~str, ~str)
 		if is_chunked {fmt!("%X\r\n%s\r\n", str::len(body), body)} else {body})
 }
 
-fn get_body(config: conn_config, request: request, types: ~[~str]) -> (response, ~str)
+fn get_body(config: ConnConfig, request: Request, types: ~[~str]) -> (Response, ~str)
 {
 	if vec::contains(types, ~"text/event-stream")
 	{
@@ -139,7 +139,7 @@ fn get_body(config: conn_config, request: request, types: ~[~str]) -> (response,
 	}
 }
 
-fn find_handler(+config: conn_config, method: ~str, request_path: ~str, types: ~[~str], version: ~str) -> (~str, ~str, ~str, response_handler, hashmap<~str, ~str>)
+fn find_handler(+config: ConnConfig, method: ~str, request_path: ~str, types: ~[~str], version: ~str) -> (~str, ~str, ~str, ResponseHandler, hashmap<~str, ~str>)
 {
 	let mut handler = option::None;
 	let mut status_code = ~"200";
@@ -223,7 +223,7 @@ fn find_handler(+config: conn_config, method: ~str, request_path: ~str, types: ~
 	return (status_code, status_mesg, result_type, option::get(handler), matches);
 }
 
-fn load_template(config: conn_config, path: &Path) -> result::Result<~str, ~str>
+fn load_template(config: ConnConfig, path: &Path) -> result::Result<~str, ~str>
 {
 	// {{ should be followed by }} (rust-mustache hangs if this is not the case).
 	fn match_curly_braces(text: ~str) -> bool
@@ -271,7 +271,7 @@ fn load_template(config: conn_config, path: &Path) -> result::Result<~str, ~str>
 	}
 }
 
-fn process_template(config: conn_config, response: response, request: request) -> (response, ~str)
+fn process_template(config: ConnConfig, response: Response, request: Request) -> (Response, ~str)
 {
 	let path = utils::url_to_path(&config.resources_root, response.template);
 	let (response, body) =
@@ -322,7 +322,7 @@ fn url_dirname(path: &str) -> ~str
 	}
 }
 
-fn path_to_type(config: conn_config, path: ~str) -> ~str
+fn path_to_type(config: ConnConfig, path: ~str) -> ~str
 {
 	let p: path::Path = path::from_str(path);
 	let extension: Option<~str> = p.filetype();
@@ -351,7 +351,7 @@ fn path_to_type(config: conn_config, path: ~str) -> ~str
 }
 
 #[cfg(test)]
-fn test_view(_settings: hashmap<~str, ~str>, _request: request, response: response) -> response
+fn test_view(_settings: hashmap<~str, ~str>, _request: Request, response: Response) -> Response
 {
 	{template: ~"test.html", ..response}
 }
@@ -369,7 +369,7 @@ fn err_loader(path: &Path) -> result::Result<~str, ~str>
 }
 
 #[cfg(test)]
-fn make_request(url: ~str, mime_type: ~str) -> http_request
+fn make_request(url: ~str, mime_type: ~str) -> HttpRequest
 {
 	let headers = ~[		// http_parser lower cases header names so we do too
 		(~"host", ~"localhost:8080"),

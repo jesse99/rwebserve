@@ -1,9 +1,9 @@
 //! Simple immutable and sendable multimap.
 //use option::extensions;
 
-type imap<K: copy, V: copy> = ~[(K, V)];
+type IMap<K: copy, V: copy> = ~[(K, V)];
 
-trait immutable_map<K: copy, V: copy>
+trait ImmutableMap<K: copy, V: copy>
 {
 	fn size() -> uint;
 	fn contains_key(key: K) -> bool;
@@ -19,7 +19,7 @@ trait immutable_map<K: copy, V: copy>
 // But note that this is a multimap which hashmap doesn't currently support.
 // Would be faster if we used a binary search, but that won't matter
 // for our use cases.
-impl<K: copy, V: copy> imap<K, V> : immutable_map<K, V>
+impl<K: copy, V: copy> IMap<K, V> : ImmutableMap<K, V>
 {
 	fn size() -> uint
 	{

@@ -5,7 +5,7 @@
 #[author = "Jesse Jones"];
 #[license = "MIT"];
 
-#[allow(non_camel_case_types)];
+#[warn(non_camel_case_types)];
 #[allow(implicit_copies)];
 #[allow(deprecated_mode)];
 #[allow(non_implicitly_copyable_typarams)];

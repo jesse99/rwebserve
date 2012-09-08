@@ -1,9 +1,9 @@
 import io;
-import io::writer_util;
-import std::getopts::*;
-import std::map::hashmap;
-import rwebserve::imap::{immutable_map, imap_methods};
-import server = rwebserve;
+use io::WriterUtil;
+use std::getopts::*;
+use std::map::hashmap;
+//use rwebserve::IMap::{immutable_map, imap_methods};
+use server = rwebserve;
 
 type options = {root: ~str, admin: bool};
 
@@ -17,7 +17,7 @@ fn get_version() -> ~str
 
 fn print_usage()
 {
-	io::println(#fmt["server %s - sample rrest server", get_version()]);
+	io::println(fmt!("server %s - sample rrest server", get_version()));
 	io::println(~"");
 	io::println(~"./server [options] --root=<dir>");
 	io::println(~"--admin      allows web clients to shut the server down");
@@ -47,34 +47,34 @@ fn parse_command_line(args: &[~str]) -> options
 	}
 	//let t = vec::tail(args);
 	
-	let match = alt getopts(t, opts)
+	let matched = match getopts(t, opts)
 	{
-		result::ok(m) {copy(m)}
-		result::err(f) {io::stderr().write_line(fail_str(f)); libc::exit(1_i32)}
+		result::Ok(m)	=> copy(m),
+		result::Err(f)	=> {io::stderr().write_line(fail_str(f)); libc::exit(1_i32)}
 	};
-	if opt_present(match, ~"h") || opt_present(match, ~"help")
+	if opt_present(matched, ~"h") || opt_present(matched, ~"help")
 	{
 		print_usage();
 		libc::exit(0_i32);
 	}
-	else if opt_present(match, ~"version")
+	else if opt_present(matched, ~"version")
 	{
-		io::println(#fmt["server %s", get_version()]);
+		io::println(fmt!("server %s", get_version()));
 		libc::exit(0_i32);
 	}
-	else if vec::is_not_empty(match.free)
+	else if vec::is_not_empty(matched.free)
 	{
 		io::stderr().write_line("Positional arguments are not allowed.");
 		libc::exit(1_i32);
 	}
-	{root: opt_str(match, ~"root"), admin: opt_present(match, ~"admin")}
+	{root: opt_str(matched, ~"root"), admin: opt_present(matched, ~"admin")}
 }
 
 fn validate_options(options: options)
 {
 	if !os::path_is_dir(options.root)
 	{
-		io::stderr().write_line(#fmt["'%s' does not point to a directory.", options.root]);
+		io::stderr().write_line(fmt!("'%s' does not point to a directory.", options.root));
 		libc::exit(1_i32);
 	}
 }
@@ -97,7 +97,7 @@ fn spawn_threaded_listener<A:send>(num_threads: uint, +block: fn~ (comm::Port<A>
 	let channel_port: comm::Port<comm::Chan<A>> = comm::Port();
 	let channel_channel = comm::Chan(channel_port);
 	
-	do task::spawn_sched(task::manual_threads(num_threads))
+	do task::spawn
 	{
 		let task_port: comm::Port<A> = comm::Port();
 		let task_channel = comm::Chan(task_port);
@@ -109,26 +109,26 @@ fn spawn_threaded_listener<A:send>(num_threads: uint, +block: fn~ (comm::Port<A>
 	comm::recv(channel_port)
 }
 
-fn home_view(_settings: hashmap<~str, ~str>, options: options, _request: server::request, response: server::response) -> server::response
+fn home_view(_settings: hashmap<~str, ~str>, options: options, _request: server::Request, response: server::Response) -> server::Response
 {
-	response.context.insert(~"admin", mustache::bool(options.admin));
-	{template: ~"home.html" with response}
+	response.context.insert(~"admin", mustache::Bool(options.admin));
+	{template: ~"home.html" , .. response}
 }
 
-fn greeting_view(_settings: hashmap<~str, ~str>, request: server::request, response: server::response) -> server::response
+fn greeting_view(_settings: hashmap<~str, ~str>, request: server::Request, response: server::Response) -> server::Response
 {
-	response.context.insert(~"user-name", mustache::str(@request.matches.get(~"name")));
-	{template: ~"hello.html" with response}
+	response.context.insert(~"user-name", mustache::Str(@request.matches.get(~"name")));
+	{template: ~"hello.html" , .. response}
 }
 
-enum state_mesg
+enum StateMesg
 {
 	add_listener(~str, comm::Chan<int>),	// str is used to identify the listener
 	remove_listener(~str),
 	shutdown,
 }
 
-type state_chan = comm::Chan<state_mesg>;
+type StateChan = comm::Chan<StateMesg>;
 
 // This is a single task that manages the state for our sample server. Normally this will
 // do something like get notified of database changes and send messages to connection
@@ -136,10 +136,10 @@ type state_chan = comm::Chan<state_mesg>;
 // data to the client.
 //
 // In this case our state is just an int and we notify listeners when we change it.
-fn manage_state() -> state_chan
+fn manage_state() -> StateChan
 {
 	do spawn_threaded_listener(3)
-	|state_port: comm::Port<state_mesg>|
+	|state_port: comm::Port<StateMesg>|
 	{
 		let timer_port = comm::Port();
 		let timer_chan = comm::Chan(timer_port);
@@ -158,23 +158,23 @@ fn manage_state() -> state_chan
 		let listeners = std::map::str_hash();
 		loop
 		{
-			alt comm::select2(timer_port, state_port)
+			match comm::select2(timer_port, state_port)
 			{
-				either::left(_)
+				either::Left(_) =>
 				{
 					time += 1;
 					for listeners.each_value |ch| {comm::send(ch, copy(time))};
 				}
-				either::right(add_listener(key, ch))
+				either::Right(add_listener(key, ch)) =>
 				{
 					let added = listeners.insert(key, ch);
 					assert added;
 				}
-				either::right(remove_listener(key))
+				either::Right(remove_listener(key)) =>
 				{
 					listeners.remove(key);
 				}
-				either::right(shutdown)
+				either::Right(shutdown) =>
 				{
 					break;
 				}
@@ -186,26 +186,26 @@ fn manage_state() -> state_chan
 // Each client connection that hits /uptime will cause an instance of this task to run. When
 // manage_state tells us that the world has changed we push the new world (an int in
 // this case) out to the client.
-fn uptime_sse(registrar: state_chan, request: server::request, push: server::push_chan) -> server::control_chan
+fn uptime_sse(registrar: StateChan, request: server::Request, push: server::PushChan) -> server::ControlChan
 {
 	let seconds = request.params.get(~"units") == ~"s";
 	
 	do spawn_threaded_listener(2)
-	|control_port: server::control_port|
+	|ControlPort: server::ControlPort|
 	{
-		#info["starting uptime sse stream"];
+		info!("starting uptime sse stream");
 		let notify_port = comm::Port();
 		let notify_chan = comm::Chan(notify_port);
 		
-		let key = #fmt["uptime %?", ptr::addr_of(notify_port)];
+		let key = fmt!("uptime %?", ptr::addr_of(notify_port));
 		comm::send(registrar, add_listener(key, notify_chan));
 		
 		loop
 		{
 			let mut time = 0;
-			alt comm::select2(notify_port, control_port)
+			match comm::select2(notify_port, ControlPort)
 			{
-				either::left(new_time)
+				either::Left(new_time) =>
 				{
 					// To help test the request code we can push uptimes as
 					// seconds or minutes based on a query string.
@@ -217,15 +217,15 @@ fn uptime_sse(registrar: state_chan, request: server::request, push: server::pus
 					{
 						time = new_time/60;
 					}
-					comm::send(push, #fmt["retry: 5000\ndata: %?\n\n", time]);
+					comm::send(push, fmt!("retry: 5000\ndata: %?\n\n", time));
 				}
-				either::right(server::refresh_event)
+				either::Right(server::RefreshEvent) =>
 				{
-					comm::send(push, #fmt["retry: 5000\ndata: %?\n\n", time]);
+					comm::send(push, fmt!("retry: 5000\ndata: %?\n\n", time));
 				}
-				either::right(server::close_event)
+				either::Right(server::CloseEvent) =>
 				{
-					#info["shutting down uptime sse stream"];
+					info!("shutting down uptime sse stream");
 					comm::send(registrar, remove_listener(key));
 					break;
 				}
@@ -244,13 +244,13 @@ fn main(args: ~[~str])
 	// This is an example of how additional information can be communicated to
 	// a view handler (in this case we're only communicating options.admin so
 	// using settings would be simpler).
-	let home: server::response_handler = |settings, request, response| {home_view(settings, options, request, response)};
-	let bail: server::response_handler = |_settings, _request, _response|
+	let home: server::ResponseHandler = |settings, request, response| {home_view(settings, options, request, response)};
+	let bail: server::ResponseHandler = |_settings, _request, _response|
 	{
-		#info["received shutdown request"];
+		info!("received shutdown request");
 		libc::exit(0)
 	};
-	let up: server::open_sse = |_settings, request, push| {uptime_sse(registrar, request, push)};
+	let up: server::OpenSse = |_settings, request, push| {uptime_sse(registrar, request, push)};
 	
 	let config = {
 		hosts: ~[~"localhost", ~"10.6.210.132"],
@@ -269,9 +269,9 @@ fn main(args: ~[~str])
 		],
 		sse: ~[(~"/uptime", up)],
 		settings: ~[(~"debug",  ~"true")]
-		with server::initialize_config()};
+		, .. server::initialize_config()};
 	
 	server::start(config);
-	#info["exiting sample server"];		// usually don't land here
+	info!("exiting sample server");		// usually don't land here
 }
 

@@ -1,13 +1,13 @@
 use std::map::*;
 
-export component, compile, match_template;
+export Component, compile, match_template;
 
 // Components of a template path.
-enum component
+enum Component
 {
-	literal(~str),		// match iff the component is str
-	variable(~str),		// matches an arbitrary component, str will be the key name
-	trailer(~str)			// matches zero or more components, str will be the key name
+	Literal(~str),		// match iff the component is str
+	Variable(~str),		// matches an arbitrary component, str will be the key name
+	Trailer(~str)		// matches zero or more components, str will be the key name
 }
 
 // Template should correspond to the path component of an URI.
@@ -15,7 +15,7 @@ enum component
 // Templates look like:
 //    /blueprint/{site}/{building}		site and building match any (single) component
 //    /csv/*path						path matches zero or more components
-fn compile(template: ~str) -> ~[component]
+fn compile(template: ~str) -> ~[Component]
 {
 	let parts = str::split_char_nonempty(template, '/');
 	
@@ -24,11 +24,11 @@ fn compile(template: ~str) -> ~[component]
 	{
 		if str::starts_with(part, "{") && str::ends_with(part, "}")
 		{
-			variable(str::slice(part, 1u, str::len(part)-1u))
+			Variable(str::slice(part, 1u, str::len(part)-1u))
 		}
 		else
 		{
-			literal(part)
+			Literal(part)
 		}
 	};
 	
@@ -38,7 +38,7 @@ fn compile(template: ~str) -> ~[component]
 		if str::starts_with(last, "*")
 		{
 			vec::pop(result);
-			vec::push(result, trailer(str::slice(last, 1u, str::len(last))));
+			vec::push(result, Trailer(str::slice(last, 1u, str::len(last))));
 		}
 	}
 	
@@ -49,7 +49,7 @@ fn compile(template: ~str) -> ~[component]
 // Components should be the result of a call to compile.
 // Result will be non-empty iff all of the components in path match the specified components.
 // On matches result will have keys matching any variable names as well as a "fullpath" key matching the entire path.
-fn match_template(path: ~str, components: ~[component]) -> hashmap<~str, ~str>
+fn match_template(path: ~str, components: ~[Component]) -> hashmap<~str, ~str>
 {
 	let parts = str::split_char_nonempty(path, '/');
 	
@@ -64,18 +64,18 @@ fn match_template(path: ~str, components: ~[component]) -> hashmap<~str, ~str>
 		
 		match components[i]
 		{
-			literal(s) =>
+			Literal(s) =>
 			{
 				if parts[i] != s
 				{
 					return std::map::str_hash();	// match failed
 				}
 			}
-			variable(s) =>
+			Variable(s) =>
 			{
 				result.insert(s, parts[i]);
 			}
-			trailer(s) =>
+			Trailer(s) =>
 			{
 				let path = vec::slice(parts, i, vec::len(parts));
 				result.insert(s, str::connect(path, ~"/"));
@@ -102,9 +102,9 @@ fn compile_literal()
 	let components = compile(template);
 	//io::println(fmt!("%?", components));
 	
-	assert components[0] == literal(~"foo");
-	assert components[1] == literal(~"bar");
-	assert components[2] == literal(~"baz");
+	assert components[0] == Literal(~"foo");
+	assert components[1] == Literal(~"bar");
+	assert components[2] == Literal(~"baz");
 	assert vec::len(components) == 3u;
 }
 
@@ -115,9 +115,9 @@ fn compile_variable()
 	let components = compile(template);
 	//io::println(fmt!("%?", components));
 	
-	assert components[0] == literal(~"foo");
-	assert components[1] == literal(~"{ba}r");
-	assert components[2] == literal(~"ba{z}");
+	assert components[0] == Literal(~"foo");
+	assert components[1] == Literal(~"{ba}r");
+	assert components[2] == Literal(~"ba{z}");
 	assert vec::len(components) == 3u;
 }
 
@@ -128,9 +128,9 @@ fn compile_non_variable()
 	let components = compile(template);
 	//io::println(fmt!("%?", components));
 	
-	assert components[0] == literal(~"foo");
-	assert components[1] == variable(~"bar");
-	assert components[2] == variable(~"baz");
+	assert components[0] == Literal(~"foo");
+	assert components[1] == Variable(~"bar");
+	assert components[2] == Variable(~"baz");
 	assert vec::len(components) == 3u;
 }
 
@@ -141,8 +141,8 @@ fn compile_path()
 	let components = compile(template);
 	//io::println(fmt!("%?", components));
 	
-	assert components[0] == literal(~"foo");
-	assert components[1] == trailer(~"path");
+	assert components[0] == Literal(~"foo");
+	assert components[1] == Trailer(~"path");
 	assert vec::len(components) == 2u;
 }
 
@@ -153,9 +153,9 @@ fn compile_non_path()
 	let components = compile(template);
 	//io::println(fmt!("%?", components));
 	
-	assert components[0] == literal(~"foo");
-	assert components[1] == literal(~"*lame");
-	assert components[2] == literal(~"url");
+	assert components[0] == Literal(~"foo");
+	assert components[1] == Literal(~"*lame");
+	assert components[2] == Literal(~"url");
 	assert vec::len(components) == 3u;
 }
 
