@@ -19,7 +19,7 @@ fn get_version() -> ~str
 
 fn print_usage()
 {
-	io::println(fmt!("server %s - sample rrest server", get_version()));
+	io::println(fmt!("server %s - sample rwebserve server", get_version()));
 	io::println(~"");
 	io::println(~"./server [options] --root=<dir>");
 	io::println(~"--admin      allows web clients to shut the server down");
