@@ -1,11 +1,13 @@
-import io;
 use io::WriterUtil;
+use path::{Path};
+use mustache::*;
 use std::getopts::*;
 use std::map::hashmap;
 //use rwebserve::IMap::{immutable_map, imap_methods};
-use server = rwebserve;
+use server = rwebserve::rwebserve;
+use server::ImmutableMap;
 
-type options = {root: ~str, admin: bool};
+type options = {root: Path, admin: bool};
 
 // str constants aren't supported yet.
 // TODO: get this (somehow) from the link attribute in the rc file (going the other way
@@ -67,14 +69,14 @@ fn parse_command_line(args: &[~str]) -> options
 		io::stderr().write_line("Positional arguments are not allowed.");
 		libc::exit(1_i32);
 	}
-	{root: opt_str(matched, ~"root"), admin: opt_present(matched, ~"admin")}
+	{root: path::from_str(opt_str(matched, ~"root")), admin: opt_present(matched, ~"admin")}
 }
 
 fn validate_options(options: options)
 {
-	if !os::path_is_dir(options.root)
+	if !os::path_is_dir(&options.root)
 	{
-		io::stderr().write_line(fmt!("'%s' does not point to a directory.", options.root));
+		io::stderr().write_line(fmt!("'%s' does not point to a directory.", options.root.to_str()));
 		libc::exit(1_i32);
 	}
 }
@@ -90,45 +92,45 @@ fn process_command_line(args: ~[~str]) -> ~str
 	str::slice(args[1], str::len("--root="), str::len(args[1]))
 }
 
-// Like spawn_listener except the new task (and whatever tasks it spawns) are distributed
-// among a fixed number of OS threads. TODO: work around for https://github.com/mozilla/rust/issues/2841
-fn spawn_threaded_listener<A:send>(num_threads: uint, +block: fn~ (comm::Port<A>)) -> comm::Chan<A>
+fn home_view(_settings: hashmap<@~str, @~str>, options: &options, _request: &server::Request, response: &server::Response) -> server::Response
 {
-	let channel_port: comm::Port<comm::Chan<A>> = comm::Port();
-	let channel_channel = comm::Chan(channel_port);
-	
-	do task::spawn
-	{
-		let task_port: comm::Port<A> = comm::Port();
-		let task_channel = comm::Chan(task_port);
-		comm::send(channel_channel, task_channel);
-		
-		block(task_port);
-	};
-	
-	comm::recv(channel_port)
+	response.context.insert(@~"admin", mustache::Bool(options.admin));
+	server::Response {template: ~"home.html", ..*response}
 }
 
-fn home_view(_settings: hashmap<~str, ~str>, options: options, _request: &server::Request, response: &server::Response) -> server::Response
+fn greeting_view(_settings: hashmap<@~str, @~str>, request: &server::Request, response: &server::Response) -> server::Response
 {
-	response.context.insert(~"admin", mustache::Bool(options.admin));
-	{template: ~"home.html" , .. response}
-}
-
-fn greeting_view(_settings: hashmap<~str, ~str>, request: &server::Request, response: &server::Response) -> server::Response
-{
-	response.context.insert(~"user-name", mustache::Str(@request.matches.get(~"name")));
-	{template: ~"hello.html" , .. response}
+	response.context.insert(@~"user-name", mustache::Str(request.matches.get(@~"name")));
+	server::Response {template: ~"hello.html", ..*response}
 }
 
 enum StateMesg
 {
-	add_listener(~str, comm::Chan<int>),	// str is used to identify the listener
-	remove_listener(~str),
-	shutdown,
+	AddListener(~str, comm::Chan<int>),	// str is used to identify the listener
+	RemoveListener(~str),
+	Shutdown,
 }
 
 type StateChan = comm::Chan<StateMesg>;
+
+// Like spawn_listener except the new task (and whatever tasks it spawns) are distributed
+// among a fixed number of OS threads. See https://github.com/mozilla/rust/issues/3435
+fn spawn_threaded_listener<A:send>(num_threads: uint, +block: fn~ (comm::Port<A>)) -> comm::Chan<A>
+{
+    let channel_port: comm::Port<comm::Chan<A>> = comm::Port();
+    let channel_channel = comm::Chan(channel_port);
+    
+    do task::spawn_sched(task::ManualThreads(num_threads))
+    {
+        let task_port: comm::Port<A> = comm::Port();
+        let task_channel = comm::Chan(task_port);
+        comm::send(channel_channel, task_channel);
+        
+        block(task_port);
+    };
+    
+    comm::recv(channel_port)
+}
 
 // This is a single task that manages the state for our sample server. Normally this will
 // do something like get notified of database changes and send messages to connection
@@ -138,45 +140,35 @@ type StateChan = comm::Chan<StateMesg>;
 // In this case our state is just an int and we notify listeners when we change it.
 fn manage_state() -> StateChan
 {
-	do spawn_threaded_listener(3)
+	do spawn_threaded_listener(2)
+	//do task::spawn_listener
 	|state_port: comm::Port<StateMesg>|
 	{
-		let timer_port = comm::Port();
-		let timer_chan = comm::Chan(timer_port);
-		
-		// TODO: Can get rid of this once peek works better. See https://github.com/mozilla/rust/issues/2841
-		do task::spawn
-		{
-			loop
-			{
-				libc::funcs::posix88::unistd::sleep(1);
-				comm::send(timer_chan, 1);
-			}
-		};
-		
 		let mut time = 0;
 		let listeners = std::map::str_hash();
 		loop
 		{
-			match comm::select2(timer_port, state_port)
+			time += 1;
+			libc::funcs::posix88::unistd::sleep(1);
+			for listeners.each_value |ch| {comm::send(ch, copy(time))};
+			
+			if state_port.peek()
 			{
-				either::Left(_) =>
+				match state_port.recv()
 				{
-					time += 1;
-					for listeners.each_value |ch| {comm::send(ch, copy(time))};
-				}
-				either::Right(add_listener(key, ch)) =>
-				{
-					let added = listeners.insert(key, ch);
-					assert added;
-				}
-				either::Right(remove_listener(key)) =>
-				{
-					listeners.remove(key);
-				}
-				either::Right(shutdown) =>
-				{
-					break;
+					AddListener(key, ch) =>
+					{
+						let added = listeners.insert(key, ch);
+						assert added;
+					}
+					RemoveListener(key) =>
+					{
+						listeners.remove(key);
+					}
+					Shutdown =>
+					{
+						break;
+					}
 				}
 			}
 		}
@@ -188,22 +180,23 @@ fn manage_state() -> StateChan
 // this case) out to the client.
 fn uptime_sse(registrar: StateChan, request: &server::Request, push: server::PushChan) -> server::ControlChan
 {
-	let seconds = request.params.get(~"units") == ~"s";
+	let seconds = *request.params.get(@~"units") == ~"s";
 	
+	//do task::spawn_listener
 	do spawn_threaded_listener(2)
-	|ControlPort: server::ControlPort|
+	|control_port: server::ControlPort|
 	{
 		info!("starting uptime sse stream");
 		let notify_port = comm::Port();
 		let notify_chan = comm::Chan(notify_port);
 		
 		let key = fmt!("uptime %?", ptr::addr_of(notify_port));
-		comm::send(registrar, add_listener(key, notify_chan));
+		comm::send(registrar, AddListener(key, notify_chan));
 		
 		loop
 		{
 			let mut time = 0;
-			match comm::select2(notify_port, ControlPort)
+			match comm::select2(notify_port, control_port)
 			{
 				either::Left(new_time) =>
 				{
@@ -226,7 +219,7 @@ fn uptime_sse(registrar: StateChan, request: &server::Request, push: server::Pus
 				either::Right(server::CloseEvent) =>
 				{
 					info!("shutting down uptime sse stream");
-					comm::send(registrar, remove_listener(key));
+					comm::send(registrar, RemoveListener(key));
 					break;
 				}
 			}
@@ -244,15 +237,17 @@ fn main(args: ~[~str])
 	// This is an example of how additional information can be communicated to
 	// a view handler (in this case we're only communicating options.admin so
 	// using settings would be simpler).
-	let home: server::ResponseHandler = |settings, request, response| {home_view(settings, options, request, response)};
-	let bail: server::ResponseHandler = |_settings, _request, _response|
+	let options2 = copy options;
+	let home: server::ResponseHandler = |settings, request: &server::Request, response: &server::Response| {home_view(settings, &options2, request, response)};
+	let bail: server::ResponseHandler = |_settings, _request: &server::Request, _response: &server::Response|
 	{
 		info!("received shutdown request");
 		libc::exit(0)
 	};
-	let up: server::OpenSse = |_settings, request, push| {uptime_sse(registrar, request, push)};
+	let up: server::OpenSse = |_settings, request: &server::Request, push| {uptime_sse(registrar, request, push)};
 	
-	let config = {
+	let config = server::Config
+	{
 		hosts: ~[~"localhost", ~"10.6.210.132"],
 		port: 8088_u16,
 		server_info: ~"sample rrest server " + get_version(),
@@ -268,10 +263,11 @@ fn main(args: ~[~str])
 			(~"greeting", greeting_view),
 		],
 		sse: ~[(~"/uptime", up)],
-		settings: ~[(~"debug",  ~"true")]
-		, .. server::initialize_config()};
+		settings: ~[(~"debug",  ~"true")],
+		..server::initialize_config()
+	};
 	
-	server::start(config);
+	server::start(&config);
 	info!("exiting sample server");		// usually don't land here
 }
 

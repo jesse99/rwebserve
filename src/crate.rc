@@ -1,5 +1,5 @@
 //! Web server library
-#[link(name = "rwebserve", vers = "0.1", uuid = "00E58FAE-72B7-435F-88F4-0A7BD11CAF5C")];
+#[link(name = "rwebserve", vers = "0.2", uuid = "00E58FAE-72B7-435F-88F4-0A7BD11CAF5C")];
 #[crate_type = "lib"];
 
 #[author = "Jesse Jones"];
@@ -22,6 +22,7 @@ mod connection;
 mod http_parser;
 mod imap;
 mod request;
+mod rwebserve;
 mod server;
 mod sse;
 mod uri_template;

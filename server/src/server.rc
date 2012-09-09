@@ -14,6 +14,6 @@
 
 use std;
 use mustache (name = "mustache", vers = "0.1");
-use rwebserve (name = "rwebserve", vers = "0.1");
+use rwebserve (name = "rwebserve", vers = "0.2");
 
 mod main;
