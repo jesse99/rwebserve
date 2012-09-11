@@ -19,12 +19,12 @@ fn start(config: &configuration::Config)
 	{
 		let h = copy host;
 		let config2 = copy *config;
-		do task::spawn
+		do task::spawn_sched(task::SingleThreaded)
 		{
 			let r = do result::chain(socket::bind_socket(h, config2.port))
 			|shandle|
 			{
-				do result::chain(socket::listen(shandle, 10i32))
+				do result::chain(socket::listen(shandle, 10i32))		// this will block the thread so we use task::SingleThreaded to avoid blocking other tasks using that thread
 					|shandle| {attach(config2, h, shandle)}
 			};
 			if result::is_err(r)
@@ -55,7 +55,7 @@ fn attach(config: configuration::Config, host: ~str, shandle: @socket::socket_ha
 		let host2 = copy host;
 		let ra2 = copy result.remote_addr;
 		let fd2 = copy result.fd;
-		do task::spawn {handle_connection(config2, fd2, host2, ra2)};
+		do task::spawn_sched(task::ManualThreads(4)) {handle_connection(config2, fd2, host2, ra2)};	// TODO: use ThreadPerCore once it is implemented
 		result::Ok(shandle)
 	};
 	attach(config, host, shandle)

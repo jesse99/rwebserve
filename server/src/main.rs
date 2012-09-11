@@ -3,7 +3,6 @@ use path::{Path};
 use mustache::*;
 use std::getopts::*;
 use std::map::hashmap;
-//use rwebserve::IMap::{immutable_map, imap_methods};
 use server = rwebserve::rwebserve;
 use server::ImmutableMap;
 
@@ -113,23 +112,20 @@ enum StateMesg
 
 type StateChan = comm::Chan<StateMesg>;
 
-// Like spawn_listener except the new task (and whatever tasks it spawns) are distributed
-// among a fixed number of OS threads. See https://github.com/mozilla/rust/issues/3435
-fn spawn_threaded_listener<A:send>(num_threads: uint, +block: fn~ (comm::Port<A>)) -> comm::Chan<A>
+// Like spawn_listener except that it uses SingleThreaded. This allows code that blocks
+// within a foreign function to avoid blocking other tasks which may be on its thread.
+fn spawn_moded_listener<A: send>(mode: task::SchedMode, +f: fn~(comm::Port<A>)) -> comm::Chan<A>
 {
-    let channel_port: comm::Port<comm::Chan<A>> = comm::Port();
-    let channel_channel = comm::Chan(channel_port);
-    
-    do task::spawn_sched(task::ManualThreads(num_threads))
-    {
-        let task_port: comm::Port<A> = comm::Port();
-        let task_channel = comm::Chan(task_port);
-        comm::send(channel_channel, task_channel);
-        
-        block(task_port);
-    };
-    
-    comm::recv(channel_port)
+	let setup_po = comm::Port();
+	let setup_ch = comm::Chan(setup_po);
+	do task::spawn_sched(mode)
+	{
+		let po = comm::Port();
+		let ch = comm::Chan(po);
+		comm::send(setup_ch, ch);
+		f(po);
+	}
+	comm::recv(setup_po)
 }
 
 // This is a single task that manages the state for our sample server. Normally this will
@@ -140,8 +136,7 @@ fn spawn_threaded_listener<A:send>(num_threads: uint, +block: fn~ (comm::Port<A>
 // In this case our state is just an int and we notify listeners when we change it.
 fn manage_state() -> StateChan
 {
-	do spawn_threaded_listener(2)
-	//do task::spawn_listener
+	do spawn_moded_listener(task::SingleThreaded)
 	|state_port: comm::Port<StateMesg>|
 	{
 		let mut time = 0;
@@ -182,8 +177,7 @@ fn uptime_sse(registrar: StateChan, request: &server::Request, push: server::Pus
 {
 	let seconds = *request.params.get(@~"units") == ~"s";
 	
-	//do task::spawn_listener
-	do spawn_threaded_listener(2)
+	do spawn_moded_listener(task::ManualThreads(4))
 	|control_port: server::ControlPort|
 	{
 		info!("starting uptime sse stream");

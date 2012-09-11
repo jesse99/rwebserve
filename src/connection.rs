@@ -71,7 +71,7 @@ fn handle_connection(config: Config, fd: libc::c_int, local_addr: ~str, remote_a
 	}
 	
 	let ra = copy remote_addr;
-	do task::spawn {read_requests(ra, fd, sch);}
+	do task::spawn_sched(task::SingleThreaded) {read_requests(ra, fd, sch);}
 	loop
 	{
 		debug!("-----------------------------------------------------------");
