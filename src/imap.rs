@@ -1,37 +1,38 @@
 //! Simple immutable and sendable multimap.
+use core::cmp;
 
-type IMap<K: copy, V: copy> = ~[(K, V)];
+type IMap<K: Copy, V: Copy> = ~[(K, V)];
 
-trait ImmutableMap<K: copy, V: copy>
+trait ImmutableMap<K: Copy, V: Copy>
 {
-	fn size() -> uint;
-	fn contains_key(key: K) -> bool;
-	fn get(key: K) -> V;
-	fn get_all(key: K) -> ~[V];
-	fn find(key: K) -> Option<V>;
-	fn each(block: fn(K, V) -> bool);
-	fn each_key(block: fn(K) -> bool);
-	fn each_value(block: fn(V) -> bool);
+	pure fn size() -> uint;
+	pure fn contains_key(key: K) -> bool;
+	pure fn get(key: K) -> V;
+	pure fn get_all(key: K) -> ~[V];
+	pure fn find(key: K) -> Option<V>;
+	pure fn each(block: fn(K, V) -> bool);
+	pure fn each_key(block: fn(K) -> bool);
+	pure fn each_value(block: fn(V) -> bool);
 }
 
 // TODO: Replace this with something better. Frozen hashmap?
 // But note that this is a multimap which hashmap doesn't currently support.
 // Would be faster if we used a binary search, but that won't matter
 // for our use cases.
-impl<K: copy, V: copy> IMap<K, V> : ImmutableMap<K, V>
+impl<K: Copy core::cmp::Eq, V: Copy> IMap<K, V> : ImmutableMap<K, V>
 {
-	fn size() -> uint
+	pure fn size() -> uint
 	{
 		vec::len(self)
 	}
 	
-	fn contains_key(key: K) -> bool
+	pure fn contains_key(key: K) -> bool
 	{
 		vec::find(self, |e| {e.first() == key}).is_some()
 	}
 	
 	/// Returns value for the first matching key or fails if no key was found.
-	fn get(key: K) -> V
+	pure fn get(key: K) -> V
 	{
 		match vec::find(self, |e| {e.first() == key})
 		{
@@ -47,7 +48,7 @@ impl<K: copy, V: copy> IMap<K, V> : ImmutableMap<K, V>
 	}
 	
 	/// Returns all values matching key.
-	fn get_all(key: K) -> ~[V]
+	pure fn get_all(key: K) -> ~[V]
 	{
 		do vec::filter_map(self)
 		|e|
@@ -63,7 +64,7 @@ impl<K: copy, V: copy> IMap<K, V> : ImmutableMap<K, V>
 		}
 	}
 	
-	fn find(key: K) -> Option<V>
+	pure fn find(key: K) -> Option<V>
 	{
 		match vec::find(self, |e| {e.first() == key})
 		{
@@ -78,7 +79,7 @@ impl<K: copy, V: copy> IMap<K, V> : ImmutableMap<K, V>
 		}
 	}
 	
-	fn each(block: fn(K, V) -> bool)
+	pure fn each(block: fn(K, V) -> bool)
 	{
 		for vec::each(self)
 		|e|
@@ -90,7 +91,7 @@ impl<K: copy, V: copy> IMap<K, V> : ImmutableMap<K, V>
 		}
 	}
 	
-	fn each_key(block: fn(K) -> bool)
+	pure fn each_key(block: fn(K) -> bool)
 	{
 		for vec::each(self)
 		|e|
@@ -102,7 +103,7 @@ impl<K: copy, V: copy> IMap<K, V> : ImmutableMap<K, V>
 		}
 	}
 	
-	fn each_value(block: fn(V) -> bool)
+	pure fn each_value(block: fn(V) -> bool)
 	{
 		for vec::each(self)
 		|e|

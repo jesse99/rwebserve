@@ -11,22 +11,22 @@ export handle_connection, ConnConfig, config_to_conn, to_route;
 // Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.
 struct ConnConfig
 {
-	let hosts: ~[~str];
-	let port: u16;
-	let server_info: ~str;
-	let resources_root: Path;
-	let route_list: ~[configuration::Route];
-	let views_table: hashmap<@~str, configuration::ResponseHandler>;
-	let static_handlers: configuration::ResponseHandler;
-	let sse_openers: hashmap<@~str, OpenSse>;		// key is a GET path
-	let sse_tasks: hashmap<@~str, ControlChan>;	// key is a GET path
-	let sse_push: comm::Chan<~str>;
-	let missing: configuration::ResponseHandler;
-	let static_type_table: hashmap<@~str, @~str>;
-	let read_error: ~str;
-	let load_rsrc: configuration::RsrcLoader;
-	let valid_rsrc: configuration::RsrcExists;
-	let settings: hashmap<@~str, @~str>;
+	pub hosts: ~[~str],
+	pub port: u16,
+	pub server_info: ~str,
+	pub resources_root: Path,
+	pub route_list: ~[configuration::Route],
+	pub views_table: hashmap<@~str, configuration::ResponseHandler>,
+	pub static_handlers: configuration::ResponseHandler,
+	pub sse_openers: hashmap<@~str, OpenSse>,		// key is a GET path
+	pub sse_tasks: hashmap<@~str, ControlChan>,	// key is a GET path
+	pub sse_push: comm::Chan<~str>,
+	pub missing: configuration::ResponseHandler,
+	pub static_type_table: hashmap<@~str, @~str>,
+	pub read_error: ~str,
+	pub load_rsrc: configuration::RsrcLoader,
+	pub valid_rsrc: configuration::RsrcExists,
+	pub settings: hashmap<@~str, @~str>,
 	
 	drop {}
 }

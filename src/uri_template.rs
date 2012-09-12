@@ -10,6 +10,20 @@ enum Component
 	Trailer(~str)		// matches zero or more components, str will be the key name
 }
 
+// TODO: This is hopefully temporary: at some point rust should again be able to compare enums without assistence.
+impl Component : cmp::Eq
+{
+	pure fn eq(&&rhs: Component) -> bool
+	{
+		fmt!("%?", self) == fmt!("%?", rhs)
+	}
+	
+	pure fn ne(&&rhs: Component) -> bool
+	{
+		fmt!("%?", self) != fmt!("%?", rhs)
+	}
+}
+
 // Template should correspond to the path component of an URI.
 // Note that the template need not have variable components.
 // Templates look like:

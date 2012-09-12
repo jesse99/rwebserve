@@ -11,6 +11,7 @@
 #[allow(non_implicitly_copyable_typarams)];
 #[allow(deprecated_pattern)];
 #[allow(unused_imports)];
+#[allow(structural_records)];
 
 use std;
 use mustache (name = "mustache", vers = "0.1");

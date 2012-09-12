@@ -8,12 +8,12 @@ export HttpRequest, make_parser;
 // This needs to be a sendable type.
 struct HttpRequest
 {
-	let method: ~str;				// per 5.1.1 these are case sensitive
-	let major_version: int;
-	let minor_version: int;
-	let url: ~str;
-	let headers: ~[(~str, ~str)];		// these are not case sensitive so we lower case them
-	let body: ~str;					// set elsewhere
+	pub method: ~str,				// per 5.1.1 these are case sensitive
+	pub major_version: int,
+	pub minor_version: int,
+	pub url: ~str,
+	pub headers: ~[(~str, ~str)],		// these are not case sensitive so we lower case them
+	pub body: ~str,					// set elsewhere
 }
 
 fn is_hex(octet: u8) -> bool
@@ -134,7 +134,7 @@ fn make_parser() -> fn@ (~str) -> result::Result<HttpRequest, ~str>
 }
 
 #[cfg(test)]
-fn equal<T: copy>(result: T, expected: T) -> bool
+fn equal<T: Copy>(result: T, expected: T) -> bool
 {
 	if result != expected
 	{

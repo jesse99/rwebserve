@@ -26,20 +26,20 @@ use sse::*;
 /// initialize_config can be used to initialize some of these fields. Note that this is sendable and copyable type.
 struct Config
 {
-	let hosts: ~[~str];
-	let port: u16;
-	let server_info: ~str;
-	let resources_root: Path;
-	let routes: ~[(~str, ~str, ~str)];					// better to use hashmap, but hashmaps cannot be sent
-	let views: ~[(~str, ResponseHandler)];
-	let static_handlers: ResponseHandler;
-	let sse: ~[(~str, OpenSse)];
-	let missing: ResponseHandler;
-	let static_types: ~[(~str, ~str)];
-	let read_error: ~str;
-	let load_rsrc: RsrcLoader;
-	let valid_rsrc: RsrcExists;
-	let settings: ~[(~str, ~str)];
+	pub hosts: ~[~str],
+	pub port: u16,
+	pub server_info: ~str,
+	pub resources_root: Path,
+	pub routes: ~[(~str, ~str, ~str)],					// better to use hashmap, but hashmaps cannot be sent
+	pub views: ~[(~str, ResponseHandler)],
+	pub static_handlers: ResponseHandler,
+	pub sse: ~[(~str, OpenSse)],
+	pub missing: ResponseHandler,
+	pub static_types: ~[(~str, ~str)],
+	pub read_error: ~str,
+	pub load_rsrc: RsrcLoader,
+	pub valid_rsrc: RsrcExists,
+	pub settings: ~[(~str, ~str)],
 }
 
 /// Information about incoming http requests. Passed into view functions.
@@ -55,17 +55,17 @@ struct Config
 /// * body: body of the http request.
 struct Request
 {
-	let version: ~str;
-	let method: ~str;
-	let local_addr: ~str;
-	let remote_addr: ~str;
-	let path: ~str;
-	let matches: hashmap<@~str, @~str>;
-	let params: imap::IMap<@~str, @~str>;
-	let headers: hashmap<@~str, @~str>;
-	let body: ~str;
+	pub version: ~str,
+	pub method: ~str,
+	pub local_addr: ~str,
+	pub remote_addr: ~str,
+	pub path: ~str,
+	pub matches: hashmap<@~str, @~str>,
+	pub params: imap::IMap<@~str, @~str>,
+	pub headers: hashmap<@~str, @~str>,
+	pub body: ~str,
 	
-	//drop {}			// TODO: enable this (was getting a compiler assert earlier)
+	drop {}			// TODO: enable this (was getting a compiler assert earlier)
 }
 
 /// Returned by view functions and used to generate http response messages.
@@ -80,13 +80,13 @@ struct Request
 /// headers["Content-Type"] should usually be explicitly set.
 struct Response
 {
-	let status: ~str;
-	let headers: hashmap<@~str, @~str>;
-	let body: ~str;
-	let template: ~str;				// an URL path is very similar to a path::PosixPath, but that is conditionally compiled in
-	let context: hashmap<@~str, mustache::Data>;
+	pub status: ~str,
+	pub headers: hashmap<@~str, @~str>,
+	pub body: ~str,
+	pub template: ~str,				// an URL path is very similar to a path::PosixPath, but that is conditionally compiled in
+	pub context: hashmap<@~str, mustache::Data>,
 	
-	//drop {}			// TODO: enable this (was getting a compiler assert earlier)
+	drop {}			// TODO: enable this (was getting a compiler assert earlier)
 }
 
 /// Function used to generate an HTTP response.
@@ -119,10 +119,10 @@ type RsrcExists = fn~ (path: &Path) -> bool;
 
 struct Route
 {
-	let method: ~str;
-	let template: ~[uri_template::Component];
-	let mime_type: ~str;
-	let route: ~str;
+	pub method: ~str,
+	pub template: ~[uri_template::Component],
+	pub mime_type: ~str,
+	pub route: ~str,
 }
 
 /// Initalizes several config fields.

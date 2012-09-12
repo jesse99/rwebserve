@@ -20,7 +20,7 @@ fn url_to_path(root: &Path, url: &str) -> Path
 	root.push_rel(&path)
 }
 
-fn boxed_hash_from_strs<V: copy>(items: &[(~str, V)]) -> hashmap<@~str, V>
+fn boxed_hash_from_strs<V: Copy>(items: &[(~str, V)]) -> hashmap<@~str, V>
 {
 	let table = box_str_hash();
 	for items.each

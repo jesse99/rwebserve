@@ -114,7 +114,7 @@ type StateChan = comm::Chan<StateMesg>;
 
 // Like spawn_listener except that it uses SingleThreaded. This allows code that blocks
 // within a foreign function to avoid blocking other tasks which may be on its thread.
-fn spawn_moded_listener<A: send>(mode: task::SchedMode, +f: fn~(comm::Port<A>)) -> comm::Chan<A>
+fn spawn_moded_listener<A: Send>(mode: task::SchedMode, +f: fn~(comm::Port<A>)) -> comm::Chan<A>
 {
 	let setup_po = comm::Port();
 	let setup_ch = comm::Chan(setup_po);
