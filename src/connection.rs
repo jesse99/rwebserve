@@ -103,7 +103,7 @@ fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<option::Op
 	let parse = make_parser();
 	loop
 	{
-		let headers = read_headers(sock);
+		let headers = read_headers(remote_addr, sock);
 		if str::is_not_empty(headers)
 		{
 			match parse(headers)
@@ -151,7 +151,7 @@ fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<option::Op
 // neck we could do chunked reads, but we'd need to take care to properly
 // handle multi-byte utf-8 characters and the split between headers and
 // the body.
-fn read_headers(sock: @socket::socket_handle) -> ~str unsafe
+fn read_headers(remote_addr: ~str, sock: @socket::socket_handle) -> ~str unsafe
 {
 	let mut buffer = ~[];
 	
@@ -165,7 +165,7 @@ fn read_headers(sock: @socket::socket_handle) -> ~str unsafe
 			}
 			result::Err(mesg) =>
 			{
-				warn!("read_headers failed with error: %s", mesg);
+				warn!("read_headers for %s failed with error: %s", remote_addr, mesg);
 				return ~"";
 			}
 		}
