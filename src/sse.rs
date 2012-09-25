@@ -10,7 +10,7 @@ use mustache::*;
 ///
 /// The hashmap contains the config settings. The PushChan allows the
 /// task to push data to the client.
-type OpenSse = fn~ (config: hashmap<@~str, @~str>, request: &configuration::Request, channel: PushChan) -> ControlChan;
+type OpenSse = fn~ (config: HashMap<@~str, @~str>, request: &configuration::Request, channel: PushChan) -> ControlChan;
 
 /// The channel used by server tasks to send data to a client.
 ///
@@ -87,7 +87,7 @@ fn OpenSse(config: &connection::ConnConfig, request: &configuration::Request, pu
 	}
 }
 
-fn close_sses(config: connection::ConnConfig)
+fn close_sses(config: &connection::ConnConfig)
 {
 	info!("closing all sse");
 	for config.sse_tasks.each_value
@@ -97,7 +97,7 @@ fn close_sses(config: connection::ConnConfig)
 	};
 }
 
-fn make_response(config: connection::ConnConfig) -> configuration::Response
+fn make_response(config: &connection::ConnConfig) -> configuration::Response
 {
 	let headers = utils::to_boxed_str_hash(~[
 		(~"Cache-Control", ~"no-cache"),
@@ -107,6 +107,6 @@ fn make_response(config: connection::ConnConfig) -> configuration::Response
 		(~"Transfer-Encoding", ~"chunked"),
 	]);
 	
-	configuration::Response {status: ~"200 OK", headers: headers, body: ~"", template: ~"", context: std::map::box_str_hash()}
+	configuration::Response {status: ~"200 OK", headers: headers, body: ~"", template: ~"", context: std::map::HashMap()}
 }
 

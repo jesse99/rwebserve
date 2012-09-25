@@ -1,9 +1,15 @@
 use io::{WriterUtil};
-use rparse::rparse::*;
-use std::map;
+//use rparse::rparse::*;
+use mod std::map;
 use imap::*;
 
-export HttpRequest, make_parser;
+use rparse::c99_parsers::{identifier, decimal_number, octal_number, hex_number, float_number, char_literal, string_literal, comment, line_comment};
+use rparse::parsers::{ParseStatus, ParseFailed, anycp, CharParsers, 
+	match0, match1, match1_0, scan, seq2_ret_str, seq3_ret_str, seq4_ret_str, seq5_ret_str, StringParsers,
+	fails, forward_ref, or_v, ret, seq2, seq3, seq4, seq5, seq6, seq7, seq8, seq9, seq2_ret0, seq2_ret1, seq3_ret0, seq3_ret1, seq3_ret2, seq4_ret0, 
+	seq4_ret1, seq4_ret2, seq4_ret3, GenericParsers, Combinators, optional_str};
+use rparse::misc::{EOT, is_alpha, is_digit, is_alphanum, is_print, is_whitespace};
+use rparse::types::{Parser, State, Status, Succeeded, Failed};
 
 // This needs to be a sendable type.
 struct HttpRequest
@@ -16,13 +22,27 @@ struct HttpRequest
 	pub body: ~str,					// set elsewhere
 }
 
-fn is_hex(octet: u8) -> bool
+// We return a closure so that we can build the parser just once.
+fn make_parser() -> fn@ (~str) -> result::Result<HttpRequest, ~str>
+{
+	|request: ~str|
+	{
+		let parser = request_parser();
+		do result::chain_err(parser.parse(@~"http request", request))
+		|err|
+		{
+			result::Err(fmt!("Expected %s on line %? col %?", *err.mesg, err.line, err.col))
+		}
+	}
+}
+
+priv fn is_hex(octet: u8) -> bool
 {
 	let ch = octet as char;
 	return (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') || (ch >= '0' && ch <= '9');
 }
 
-fn to_int(octet: u8) -> uint
+priv fn to_int(octet: u8) -> uint
 {
 	let ch = octet as char;
 	if ch >= 'a' && ch <= 'f'
@@ -39,7 +59,7 @@ fn to_int(octet: u8) -> uint
 	}
 }
 
-fn decode(url: ~str) -> ~str
+priv fn decode(url: ~str) -> ~str
 {
 	let mut result = ~"";
 	let mut i = 0u;
@@ -78,7 +98,7 @@ fn decode(url: ~str) -> ~str
 // TODO: 
 // Server, User-Agent, and Via values can have comments
 // double quotes can be used with header values that use separators
-fn request_parser() -> Parser<HttpRequest>
+priv fn request_parser() -> Parser<HttpRequest>
 {
 	let ws = " \t".anyc();
 	let lws = ws.r0();
@@ -97,14 +117,14 @@ fn request_parser() -> Parser<HttpRequest>
 		
 	// value := [^\r\n]+
 	// continuation := crnl [ \t] value
-	let value = match1({|c| c != '\r' && c != '\n'});
+	let value = match1({|c: char| c != '\r' && c != '\n'});
 	let continuation = do seq3(crnl, ws, value)
 		|_a1, _a2, v| {result::Ok(~" " + str::trim(*v))};
 	
 	// name := [^:]+
 	// header := name ': ' value continuation* crnl
 	// headers := header*
-	let name = match1({|c| c != ':'});
+	let name = match1({|c: char| c != ':'});
 	let header = do seq5(name, ":".lit(), value, continuation.r0(), crnl)
 		|n, _a2, v, cnt, _a5| {result::Ok((str::to_lower(*n), str::trim(*v) + str::connect(*cnt, ~"")))};	// 4.2 says that header names are case-insensitive so we lower case them
 	let headers = header.r0();
@@ -119,22 +139,8 @@ fn request_parser() -> Parser<HttpRequest>
 	return request;
 }
 
-// We return a closure so that we can build the parser just once.
-fn make_parser() -> fn@ (~str) -> result::Result<HttpRequest, ~str>
-{
-	|request: ~str|
-	{
-		let parser = request_parser();
-		do result::chain_err(parser.parse(@~"http request", request))
-		|err|
-		{
-			result::Err(fmt!("Expected %s on line %? col %?", *err.mesg, err.line, err.col))
-		}
-	}
-}
-
 #[cfg(test)]
-fn equal<T: Copy>(result: T, expected: T) -> bool
+fn equal<T: Copy cmp::Eq>(result: T, expected: T) -> bool
 {
 	if result != expected
 	{

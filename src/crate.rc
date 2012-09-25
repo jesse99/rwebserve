@@ -5,18 +5,17 @@
 #[author = "Jesse Jones"];
 #[license = "MIT"];
 
-#[warn(non_camel_case_types)];
-#[allow(implicit_copies)];
-#[allow(deprecated_mode)];
-#[allow(non_implicitly_copyable_typarams)];
-#[allow(deprecated_pattern)];
-#[allow(unused_imports)];
+#[forbid(unused_imports)];
 #[allow(structural_records)];
+#[allow(deprecated_mode)];
+#[allow(deprecated_pattern)];	// TODO: enable this
+#[allow(non_implicitly_copyable_typarams)];
+#[allow(implicit_copies)];
 
-use std;
-use mustache (name = "mustache", vers = "0.1");
-use rparse (name = "rparse", vers = "0.6");
-use socket (name = "socket", vers = "0.1");
+extern mod std;
+extern mod mustache (name = "mustache", vers = "0.1");
+extern mod rparse (name = "rparse", vers = "0.6");
+extern mod socket (name = "socket", vers = "0.1");
 
 mod configuration; 
 mod connection;

@@ -2,8 +2,6 @@
 use socket::*;
 use connection::{handle_connection};
 
-export start;
-
 /// Startup the server.
 /// 
 /// Currently this will run until a client does a GET on '/shutdown' in which case exit is called.
@@ -15,21 +13,22 @@ fn start(config: &configuration::Config)
 	
 	// Accept connections from clients on one or more interfaces.
 	for vec::each(config.hosts)
-	|host|
+	|hostA|
 	{
-		let h = copy host;
+		let host = copy *hostA;
 		let config2 = copy *config;
 		do task::spawn_sched(task::SingleThreaded)
+		|move host|
 		{
-			let r = do result::chain(socket::bind_socket(h, config2.port))
+			let r = do result::chain(socket::bind_socket(host, config2.port))
 			|shandle|
 			{
 				do result::chain(socket::listen(shandle, 10i32))		// this will block the thread so we use task::SingleThreaded to avoid blocking other tasks using that thread
-					|shandle| {attach(config2, h, shandle)}
+					|shandle| {attach(config2, host, shandle)}
 			};
 			if result::is_err(r)
 			{
-				error!("Couldn't start web server at %s: %s", h, result::get_err(r));
+				error!("Couldn't start web server at %s: %s", host, result::get_err(r));
 			}
 			comm::send(chan, 1u);
 		};
@@ -44,7 +43,7 @@ fn start(config: &configuration::Config)
 	}
 }
 
-fn attach(config: configuration::Config, host: ~str, shandle: @socket::socket_handle) -> Result<@socket::socket_handle, ~str>
+priv fn attach(config: configuration::Config, host: ~str, shandle: @socket::socket_handle) -> Result<@socket::socket_handle, ~str>
 {
 	info!("server is listening for new connections on %s:%?", host, config.port);
 	do result::chain(socket::accept(shandle))

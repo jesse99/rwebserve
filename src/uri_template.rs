@@ -1,7 +1,5 @@
 use std::map::*;
 
-export Component, compile, match_template;
-
 // Components of a template path.
 enum Component
 {
@@ -63,17 +61,17 @@ fn compile(template: ~str) -> ~[Component]
 // Components should be the result of a call to compile.
 // Result will be non-empty iff all of the components in path match the specified components.
 // On matches result will have keys matching any variable names as well as a "fullpath" key matching the entire path.
-fn match_template(path: ~str, components: ~[Component]) -> hashmap<@~str, @~str>
+fn match_template(path: ~str, components: ~[Component]) -> HashMap<@~str, @~str>
 {
 	let parts = str::split_char_nonempty(path, '/');
 	
 	let mut i = 0u;
-	let result = std::map::box_str_hash();
+	let result = std::map::HashMap();
 	while i < vec::len(components)
 	{
 		if i == vec::len(parts)
 		{
-			return std::map::box_str_hash();			// ran out of parts to match
+			return std::map::HashMap();			// ran out of parts to match
 		}
 		
 		match components[i]
@@ -82,7 +80,7 @@ fn match_template(path: ~str, components: ~[Component]) -> hashmap<@~str, @~str>
 			{
 				if parts[i] != s
 				{
-					return std::map::box_str_hash();	// match failed
+					return std::map::HashMap();	// match failed
 				}
 			}
 			Variable(s) =>
@@ -101,7 +99,7 @@ fn match_template(path: ~str, components: ~[Component]) -> hashmap<@~str, @~str>
 	
 	if i != vec::len(parts)
 	{
-		return std::map::box_str_hash();				// not all parts were matched
+		return std::map::HashMap();				// not all parts were matched
 	}
 	
 	result.insert(@~"fullpath", @path);

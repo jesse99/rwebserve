@@ -6,43 +6,41 @@ use imap::*;
 use request::{process_request, make_header_and_body};
 use sse::*;
 
-export handle_connection, ConnConfig, config_to_conn, to_route;
-
 // Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.
-struct ConnConfig
+pub struct ConnConfig
 {
 	pub hosts: ~[~str],
 	pub port: u16,
 	pub server_info: ~str,
 	pub resources_root: Path,
 	pub route_list: ~[configuration::Route],
-	pub views_table: hashmap<@~str, configuration::ResponseHandler>,
+	pub views_table: HashMap<@~str, configuration::ResponseHandler>,
 	pub static_handlers: configuration::ResponseHandler,
-	pub sse_openers: hashmap<@~str, OpenSse>,		// key is a GET path
-	pub sse_tasks: hashmap<@~str, ControlChan>,	// key is a GET path
+	pub sse_openers: HashMap<@~str, OpenSse>,		// key is a GET path
+	pub sse_tasks: HashMap<@~str, ControlChan>,	// key is a GET path
 	pub sse_push: comm::Chan<~str>,
 	pub missing: configuration::ResponseHandler,
-	pub static_type_table: hashmap<@~str, @~str>,
+	pub static_type_table: HashMap<@~str, @~str>,
 	pub read_error: ~str,
 	pub load_rsrc: configuration::RsrcLoader,
 	pub valid_rsrc: configuration::RsrcExists,
-	pub settings: hashmap<@~str, @~str>,
+	pub settings: HashMap<@~str, @~str>,
 	
 	drop {}
 }
 
-fn config_to_conn(config: &configuration::Config, push: comm::Chan<~str>) -> ConnConfig
+pub fn config_to_conn(config: &configuration::Config, push: comm::Chan<~str>) -> ConnConfig
 {
 	ConnConfig {
 		hosts: config.hosts,
 		port: config.port,
 		server_info: config.server_info,
 		resources_root: config.resources_root,
-		route_list: vec::map(config.routes, connection::to_route),
+		route_list: vec::map(config.routes, to_route),
 		views_table: utils::boxed_hash_from_strs(config.views),
 		static_handlers: copy(config.static_handlers),
 		sse_openers: utils::boxed_hash_from_strs(config.sse),
-		sse_tasks: std::map::box_str_hash(),
+		sse_tasks: std::map::HashMap(),
 		sse_push: push,
 		missing: copy(config.missing),
 		static_type_table: utils::to_boxed_str_hash(config.static_types),
@@ -54,7 +52,7 @@ fn config_to_conn(config: &configuration::Config, push: comm::Chan<~str>) -> Con
 }
 
 // TODO: probably want to use task::unsupervise
-fn handle_connection(config: Config, fd: libc::c_int, local_addr: ~str, remote_addr: ~str)
+pub fn handle_connection(config: Config, fd: libc::c_int, local_addr: ~str, remote_addr: ~str)
 {
 	let sport = comm::Port();
 	let sch = comm::Chan(sport);
@@ -63,7 +61,7 @@ fn handle_connection(config: Config, fd: libc::c_int, local_addr: ~str, remote_a
 	let sock = @socket::socket_handle(fd);
 	
 	let iconfig = config_to_conn(&config, ech);
-	let err = validate_config(iconfig);
+	let err = validate_config(&iconfig);
 	if str::is_not_empty(err)
 	{
 		error!("Invalid config: %s", err);
@@ -79,17 +77,17 @@ fn handle_connection(config: Config, fd: libc::c_int, local_addr: ~str, remote_a
 		{
 			either::Left(option::Some(request)) =>
 			{
-				let (header, body) = process_request(&iconfig, request, local_addr, remote_addr);
+				let (header, body) = process_request(&iconfig, &request, local_addr, remote_addr);
 				write_response(sock, header, body);
 			}
 			either::Left(option::None) =>
 			{
-				sse::close_sses(iconfig);
+				sse::close_sses(&iconfig);
 				break;
 			}
 			either::Right(body) =>
 			{
-				let response = sse::make_response(iconfig);
+				let response = sse::make_response(&iconfig);
 				let (_, body) = make_header_and_body(&response, body);
 				write_response(sock, ~"", body);
 			}
@@ -97,7 +95,7 @@ fn handle_connection(config: Config, fd: libc::c_int, local_addr: ~str, remote_a
 	}
 }
 
-fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<option::Option<HttpRequest>>)
+priv fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<option::Option<HttpRequest>>)
 {
 	let sock = @socket::socket_handle(fd);		// socket::socket_handle(fd);
 	let parse = make_parser();
@@ -151,7 +149,7 @@ fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<option::Op
 // neck we could do chunked reads, but we'd need to take care to properly
 // handle multi-byte utf-8 characters and the split between headers and
 // the body.
-fn read_headers(remote_addr: ~str, sock: @socket::socket_handle) -> ~str unsafe
+priv fn read_headers(remote_addr: ~str, sock: @socket::socket_handle) -> ~str unsafe
 {
 	let mut buffer = ~[];
 	
@@ -174,8 +172,8 @@ fn read_headers(remote_addr: ~str, sock: @socket::socket_handle) -> ~str unsafe
 	
 	if str::is_utf8(buffer)
 	{
-		let mut headers = str::unsafe::from_buf(vec::unsafe::to_ptr(buffer));
-		str::unsafe::set_len(headers, vec::len(buffer));		// push adds garbage after the end of the actual elements (i.e. the capacity part)
+		let mut headers = str::raw::from_buf(vec::raw::to_ptr(buffer));
+		str::raw::set_len(headers, vec::len(buffer));		// push adds garbage after the end of the actual elements (i.e. the capacity part)
 		debug!("headers: %s", headers);
 		headers
 	}
@@ -186,7 +184,7 @@ fn read_headers(remote_addr: ~str, sock: @socket::socket_handle) -> ~str unsafe
 	}
 }
 
-fn found_headers(buffer: ~[u8]) -> bool
+priv fn found_headers(buffer: ~[u8]) -> bool
 {
 	if vec::len(buffer) < 4u
 	{
@@ -199,7 +197,7 @@ fn found_headers(buffer: ~[u8]) -> bool
 	}
 }
 
-fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str unsafe
+priv fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str unsafe
 {
 	let total_len = option::get(uint::from_str(content_length));
 	
@@ -230,7 +228,7 @@ fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str unsafe
 	
 	if str::is_utf8(buffer)
 	{
-		let body = str::unsafe::from_buf(vec::unsafe::to_ptr(buffer));
+		let body = str::raw::from_buf(vec::raw::to_ptr(buffer));
 		debug!("body: %s", body);	// note that the log macros truncate really long strings 
 		body
 	}
@@ -243,7 +241,7 @@ fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str unsafe
 
 // TODO: check connection: keep-alive
 // TODO: presumbably when we switch to a better socket library we'll be able to handle errors here...
-fn write_response(sock: @socket::socket_handle, header: ~str, body: ~str)
+priv fn write_response(sock: @socket::socket_handle, header: ~str, body: ~str)
 {
 	// It's probably more efficient to do the concatenation rather than two sends because
 	// we'll avoid a context switch into the kernel. In any case this seems to increase the
@@ -253,7 +251,7 @@ fn write_response(sock: @socket::socket_handle, header: ~str, body: ~str)
 	do str::as_buf(data) |buffer, _len| {socket::send_buf(sock, buffer, str::len(data))};
 }
 
-fn validate_config(config: ConnConfig) -> ~str
+priv fn validate_config(config: &ConnConfig) -> ~str
 {
 	let mut errors = ~[];
 	
@@ -265,7 +263,7 @@ fn validate_config(config: ConnConfig) -> ~str
 	for vec::each(config.hosts)
 	|host|
 	{
-		if str::is_empty(host)
+		if str::is_empty(*host)
 		{
 			vec::push(errors, ~"Host is empty.");
 		}
@@ -294,10 +292,10 @@ fn validate_config(config: ConnConfig) -> ~str
 	for vec::each(~[~"forbidden.html", ~"home.html", ~"not-found.html", ~"not-supported.html"])
 	|name|
 	{
-		let path = config.resources_root.push(name);
+		let path = config.resources_root.push(*name);
 		if !os::path_exists(&path)
 		{
-			vec::push(names, name);
+			vec::push(names, copy *name);
 		}
 	};
 	if vec::is_not_empty(names)
@@ -350,7 +348,7 @@ fn validate_config(config: ConnConfig) -> ~str
 	return str::connect(errors, ~" ");
 }
 
-fn to_route(input: (~str, ~str, ~str)) -> Route
+pub fn to_route(&&input: (~str, ~str, ~str)) -> Route
 {
 	match input
 	{
@@ -388,7 +386,7 @@ fn routes_must_have_views()
 	let ech = comm::Chan(eport);
 	let iconfig = config_to_conn(&config, ech);
 	
-	assert validate_config(iconfig) == ~"No views for the following routes: farewell, greeting";
+	assert validate_config(&iconfig) == ~"No views for the following routes: farewell, greeting";
 }
 
 #[test]
@@ -406,7 +404,7 @@ fn views_must_have_routes()
 	let ech = comm::Chan(eport);
 	let iconfig = config_to_conn(&config, ech);
 	
-	assert validate_config(iconfig) == ~"No routes for the following views: goodbye, greeting";
+	assert validate_config(&iconfig) == ~"No routes for the following views: goodbye, greeting";
 }
 
 #[test]
@@ -424,6 +422,6 @@ fn root_must_have_required_files()
 	let ech = comm::Chan(eport);
 	let iconfig = config_to_conn(&config, ech);
 	
-	assert validate_config(iconfig) == ~"Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";
+	assert validate_config(&iconfig) == ~"Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";
 }
 

@@ -20,9 +20,9 @@ fn url_to_path(root: &Path, url: &str) -> Path
 	root.push_rel(&path)
 }
 
-fn boxed_hash_from_strs<V: Copy>(items: &[(~str, V)]) -> hashmap<@~str, V>
+fn boxed_hash_from_strs<V: Copy>(items: &[(~str, V)]) -> HashMap<@~str, V>
 {
-	let table = box_str_hash();
+	let table = HashMap();
 	for items.each
 	|item|
 	{
@@ -31,9 +31,9 @@ fn boxed_hash_from_strs<V: Copy>(items: &[(~str, V)]) -> hashmap<@~str, V>
 	table
 }
 
-fn to_boxed_str_hash(items: &[(~str, ~str)]) -> hashmap<@~str, @~str>
+fn to_boxed_str_hash(items: &[(~str, ~str)]) -> HashMap<@~str, @~str>
 {
-	let table = box_str_hash();
+	let table = HashMap();
 	for items.each
 	|item|
 	{
@@ -114,7 +114,7 @@ fn check_strs(actual: ~str, expected: ~str) -> bool
 }
 
 #[cfg(test)]
-fn check_vectors<T>(actual: ~[T], expected: ~[T]) -> bool
+fn check_vectors<T: cmp::Eq>(actual: ~[T], expected: ~[T]) -> bool
 {
 	if actual != expected
 	{

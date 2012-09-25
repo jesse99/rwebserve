@@ -1,5 +1,5 @@
 //! Simple immutable and sendable multimap.
-use core::cmp;
+use mod core::cmp;
 
 type IMap<K: Copy, V: Copy> = ~[(K, V)];
 
