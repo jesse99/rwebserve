@@ -112,7 +112,7 @@ enum StateMesg
 
 type StateChan = comm::Chan<StateMesg>;
 
-// Like spawn_listener except that it uses SingleThreaded. This allows code that blocks
+// Like spawn_listener except that it supports custom modes. This allows code that blocks
 // within a foreign function to avoid blocking other tasks which may be on its thread.
 fn spawn_moded_listener<A: Send>(mode: task::SchedMode, +f: fn~(comm::Port<A>)) -> comm::Chan<A>
 {
@@ -136,7 +136,7 @@ fn spawn_moded_listener<A: Send>(mode: task::SchedMode, +f: fn~(comm::Port<A>)) 
 // In this case our state is just an int and we notify listeners when we change it.
 fn manage_state() -> StateChan
 {
-	do spawn_moded_listener(task::SingleThreaded)
+	do spawn_moded_listener(task::ManualThreads(1))
 	|state_port: comm::Port<StateMesg>|
 	{
 		let mut time = 0;

@@ -17,13 +17,13 @@ fn start(config: &configuration::Config)
 	{
 		let host = copy *hostA;
 		let config2 = copy *config;
-		do task::spawn_sched(task::SingleThreaded)
+		do task::spawn_sched(task::ManualThreads(1))
 		|move host|
 		{
 			let r = do result::chain(socket::bind_socket(host, config2.port))
 			|shandle|
 			{
-				do result::chain(socket::listen(shandle, 10i32))		// this will block the thread so we use task::SingleThreaded to avoid blocking other tasks using that thread
+				do result::chain(socket::listen(shandle, 10i32))		// this will block the thread so we use task::ManualThreads to avoid blocking other tasks using that thread
 					|shandle| {attach(&config2, host, shandle)}
 			};
 			if result::is_err(r)
