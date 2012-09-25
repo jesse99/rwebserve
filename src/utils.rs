@@ -98,7 +98,7 @@ fn truncate_str(s: ~str, max_chars: uint) -> ~str
 	}
 	else
 	{
-		s
+		copy s
 	}
 }
 

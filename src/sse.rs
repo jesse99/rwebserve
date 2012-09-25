@@ -44,7 +44,7 @@ fn process_sse(config: &connection::ConnConfig, request: &configuration::Request
 	let mut mesg = ~"OK";
 	let mut mime = ~"text/event-stream; charset=utf-8";
 	
-	match config.sse_tasks.find(@request.path)
+	match config.sse_tasks.find(@copy request.path)
 	{
 		option::Some(sse) =>
 		{
@@ -70,13 +70,13 @@ fn process_sse(config: &connection::ConnConfig, request: &configuration::Request
 // TODO: Chrome, at least, doesn't seem to close EventSources so we need to time these out.
 fn OpenSse(config: &connection::ConnConfig, request: &configuration::Request, push_data: PushChan) -> bool
 {
-	match config.sse_openers.find(@request.path)
+	match config.sse_openers.find(@copy request.path)
 	{
 		option::Some(opener) =>
 		{
 			info!("opening sse for %s", request.path);
 			let sse = opener(config.settings, request, push_data);
-			config.sse_tasks.insert(@request.path, sse);
+			config.sse_tasks.insert(@copy request.path, sse);
 			true
 		}
 		option::None =>
@@ -103,7 +103,7 @@ fn make_response(config: &connection::ConnConfig) -> configuration::Response
 		(~"Cache-Control", ~"no-cache"),
 		(~"Content-Type", ~"text/event-stream; charset=utf-8"),
 		(~"Date", std::time::now_utc().rfc822()),
-		(~"Server", config.server_info),
+		(~"Server", copy config.server_info),
 		(~"Transfer-Encoding", ~"chunked"),
 	]);
 	

@@ -52,7 +52,7 @@ pub fn config_to_conn(config: &configuration::Config, push: comm::Chan<~str>) ->
 }
 
 // TODO: probably want to use task::unsupervise
-pub fn handle_connection(config: Config, fd: libc::c_int, local_addr: ~str, remote_addr: ~str)
+pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: ~str, remote_addr: ~str)
 {
 	let sport = comm::Port();
 	let sch = comm::Chan(sport);
@@ -60,7 +60,7 @@ pub fn handle_connection(config: Config, fd: libc::c_int, local_addr: ~str, remo
 	let ech = comm::Chan(eport);
 	let sock = @socket::socket_handle(fd);
 	
-	let iconfig = config_to_conn(&config, ech);
+	let iconfig = config_to_conn(config, ech);
 	let err = validate_config(&iconfig);
 	if str::is_not_empty(err)
 	{
@@ -313,12 +313,11 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 	for config.route_list.each()
 	|entry|
 	{
-		let route = entry.route;
-		if !config.views_table.contains_key(@route)
+		if !config.views_table.contains_key(@copy entry.route)
 		{
-			vec::push(missing_routes, route);
+			vec::push(missing_routes, copy entry.route);
 		}
-		vec::push(routes, route);
+		vec::push(routes, copy entry.route);
 	};
 	if vec::is_not_empty(missing_routes)
 	{
@@ -334,7 +333,7 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 	{
 		if !vec::contains(routes, *route)
 		{
-			vec::push(missing_views, *route);
+			vec::push(missing_views, copy *route);
 		}
 	};
 	if vec::is_not_empty(missing_views)
@@ -363,7 +362,7 @@ pub fn to_route(&&input: (~str, ~str, ~str)) -> Route
 				}
 				else
 				{
-					(template_str, ~"text/html")
+					(copy template_str, ~"text/html")
 				};
 			
 			Route {method: method, template: uri_template::compile(template), mime_type: mime_type, route: route}

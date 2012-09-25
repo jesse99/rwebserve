@@ -24,7 +24,7 @@ fn start(config: &configuration::Config)
 			|shandle|
 			{
 				do result::chain(socket::listen(shandle, 10i32))		// this will block the thread so we use task::SingleThreaded to avoid blocking other tasks using that thread
-					|shandle| {attach(config2, host, shandle)}
+					|shandle| {attach(&config2, host, shandle)}
 			};
 			if result::is_err(r)
 			{
@@ -43,18 +43,18 @@ fn start(config: &configuration::Config)
 	}
 }
 
-priv fn attach(config: configuration::Config, host: ~str, shandle: @socket::socket_handle) -> Result<@socket::socket_handle, ~str>
+priv fn attach(config: &configuration::Config, host: ~str, shandle: @socket::socket_handle) -> Result<@socket::socket_handle, ~str>
 {
 	info!("server is listening for new connections on %s:%?", host, config.port);
 	do result::chain(socket::accept(shandle))
 	|result|
 	{
 		info!("connected to client at %s", result.remote_addr);
-		let config2 = copy config;
+		let config2 = copy *config;
 		let host2 = copy host;
 		let ra2 = copy result.remote_addr;
 		let fd2 = copy result.fd;
-		do task::spawn_sched(task::ManualThreads(4)) {handle_connection(config2, fd2, host2, ra2)};	// TODO: use ThreadPerCore once it is implemented
+		do task::spawn_sched(task::ManualThreads(4)) |move config2| {handle_connection(&config2, fd2, host2, ra2)};	// TODO: use ThreadPerCore once it is implemented
 		result::Ok(shandle)
 	};
 	attach(config, host, shandle)

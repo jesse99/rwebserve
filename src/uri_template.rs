@@ -40,7 +40,7 @@ fn compile(template: ~str) -> ~[Component]
 		}
 		else
 		{
-			Literal(part)
+			Literal(copy part)
 		}
 	};
 	
@@ -85,12 +85,12 @@ fn match_template(path: ~str, components: ~[Component]) -> HashMap<@~str, @~str>
 			}
 			Variable(s) =>
 			{
-				result.insert(@s, @parts[i]);
+				result.insert(@copy s, @copy parts[i]);
 			}
 			Trailer(s) =>
 			{
 				let path = vec::slice(parts, i, vec::len(parts));
-				result.insert(@s, @str::connect(path, ~"/"));
+				result.insert(@copy s, @str::connect(path, ~"/"));
 				i = vec::len(parts) - 1u;
 			}
 		}
@@ -102,7 +102,7 @@ fn match_template(path: ~str, components: ~[Component]) -> HashMap<@~str, @~str>
 		return std::map::HashMap();				// not all parts were matched
 	}
 	
-	result.insert(@~"fullpath", @path);
+	result.insert(@~"fullpath", @copy path);
 	return result;
 }
 

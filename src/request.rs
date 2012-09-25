@@ -45,7 +45,7 @@ priv fn parse_url(url: ~str) -> (~str, imap::IMap<@~str, @~str>)
 					}
 					option::None =>
 					{
-						~[@p]		// bad field
+						~[@copy p]		// bad field
 					}
 				}
 			};
@@ -59,12 +59,12 @@ priv fn parse_url(url: ~str) -> (~str, imap::IMap<@~str, @~str>)
 				// It's not a valid query string so we'll just let the server handle it.
 				// Presumbably it won't match any routes so we'll get an error then.
 				error!("invalid query string");
-				(url, ~[])
+				(copy url, ~[])
 			}
 		}
 		option::None =>
 		{
-			(url, ~[])
+			(copy url, ~[])
 		}
 	}
 }
@@ -72,9 +72,9 @@ priv fn parse_url(url: ~str) -> (~str, imap::IMap<@~str, @~str>)
 pub fn make_initial_response(config: &connection::ConnConfig, status_code: ~str, status_mesg: ~str, mime_type: ~str, request: &configuration::Request) -> configuration::Response
 {
 	let headers = utils::to_boxed_str_hash(~[
-		(~"Content-Type", mime_type),
+		(~"Content-Type", copy mime_type),
 		(~"Date", std::time::now_utc().rfc822()),
-		(~"Server", config.server_info),
+		(~"Server", copy config.server_info),
 	]);
 	
 	if config.settings.contains_key(@~"debug") && config.settings.get(@~"debug") == @~"true"
@@ -83,10 +83,10 @@ pub fn make_initial_response(config: &connection::ConnConfig, status_code: ~str,
 	}
 	
 	let context = std::map::HashMap();
-	context.insert(@~"request-path", mustache::Str(@request.path));
-	context.insert(@~"status-code", mustache::Str(@status_code));
-	context.insert(@~"status-mesg", mustache::Str(@status_mesg));
-	context.insert(@~"request-version", mustache::Str(@request.version));
+	context.insert(@~"request-path", mustache::Str(@copy request.path));
+	context.insert(@~"status-code", mustache::Str(@copy status_code));
+	context.insert(@~"status-mesg", mustache::Str(@copy status_mesg));
+	context.insert(@~"request-version", mustache::Str(@copy request.version));
 	
 	Response {status: status_code + ~" " + status_mesg, headers: headers, body: ~"", template: ~"", context: context}
 }
@@ -129,7 +129,7 @@ pub fn make_header_and_body(response: &Response, body: ~str) -> (~str, ~str)
 	}
 	
 	(fmt!("HTTP/1.1 %s\r\n%s\r\n", response.status, headers),
-		if is_chunked {fmt!("%X\r\n%s\r\n", str::len(body), body)} else {body})
+		if is_chunked {fmt!("%X\r\n%s\r\n", str::len(body), body)} else {copy body})
 }
 
 priv fn get_body(config: &connection::ConnConfig, request: &Request, types: ~[~str]) -> (Response, ~str)
@@ -153,7 +153,7 @@ priv fn get_body(config: &connection::ConnConfig, request: &Request, types: ~[~s
 		}
 		else
 		{
-			let body = response.body;
+			let body = copy response.body;
 			(response, body)
 		}
 	}
@@ -217,7 +217,7 @@ priv fn find_handler(config: &connection::ConnConfig, method: ~str, request_path
 				{
 					if vec::contains(types, entry.mime_type)
 					{
-						handler = option::Some(config.views_table.get(@entry.route));
+						handler = option::Some(config.views_table.get(@copy entry.route));
 						result_type = entry.mime_type + ~"; charset=UTF-8";
 						matches = m;
 						break;
@@ -282,7 +282,7 @@ priv fn load_template(config: &connection::ConnConfig, path: &Path) -> result::R
 	{
 		if !config.settings.contains_key(@~"debug") || config.settings.get(@~"debug") == @~"false" || match_curly_braces(template)
 		{
-			result::Ok(template)
+			result::Ok(copy template)
 		}
 		else
 		{
@@ -300,13 +300,13 @@ priv fn process_template(config: &connection::ConnConfig, response: &Response, r
 			result::Ok(v) =>
 			{
 				// We found a legit template file.
-				(Response {status: response.status, ..*response}, v)		// hacky way to return a new Response without a copy
+				(Response {status: response.status, ..*response}, copy v)		// hacky way to return a new Response without a copy
 			}
 			result::Err(mesg) =>
 			{
 				// We failed to load the template so use the hard-coded config.read_error body.
 				let context = std::map::HashMap();
-				context.insert(@~"request-path", mustache::Str(@request.path));
+				context.insert(@~"request-path", mustache::Str(@copy request.path));
 				let body = mustache::render_str(config.read_error, context);
 				
 				if config.server_info != ~"unit test"
@@ -355,7 +355,7 @@ priv fn path_to_type(config: &connection::ConnConfig, path: ~str) -> ~str
 		{
 			option::Some(v) =>
 			{
-				*v
+				copy *v
 			}
 			option::None =>
 			{
@@ -395,7 +395,7 @@ fn make_request(url: ~str, mime_type: ~str) -> HttpRequest
 	let headers = ~[		// http_parser lower cases header names so we do too
 		(~"host", ~"localhost:8080"),
 		(~"user-agent", ~"Mozilla/5.0"),
-		(~"accept", mime_type),
+		(~"accept", copy mime_type),
 		(~"accept-Language", ~"en-us,en"),
 		(~"accept-encoding", ~"gzip, deflate"),
 		(~"connection", ~"keep-alive")];

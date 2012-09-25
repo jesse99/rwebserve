@@ -140,6 +140,17 @@ priv fn request_parser() -> Parser<HttpRequest>
 }
 
 #[cfg(test)]
+fn equal_strs(result: ~str, expected: ~str) -> bool
+{
+	if result != expected
+	{
+		io::stderr().write_line(fmt!("Expected %? but found %?", expected, result));
+		return false;
+	}
+	return true;
+}
+
+#[cfg(test)]
 fn equal<T: Copy cmp::Eq>(result: T, expected: T) -> bool
 {
 	if result != expected
@@ -159,10 +170,10 @@ fn test_get_method1()
 	{
 		result::Ok(value) =>
 		{
-			assert equal(value.method, ~"GET");
+			assert equal_strs(value.method, ~"GET");
 			assert equal(value.major_version, 1);
 			assert equal(value.minor_version, 1);
-			assert equal(value.url, ~"/");
+			assert equal_strs(value.url, ~"/");
 			assert equal(value.headers.len(), 0u);
 		}
 		result::Err(mesg) =>
@@ -182,18 +193,18 @@ fn test_get_method2()
 	{
 		result::Ok(value) =>
 		{
-			assert equal(value.method, ~"GET");
+			assert equal_strs(value.method, ~"GET");
 			assert equal(value.major_version, 1);
 			assert equal(value.minor_version, 1);
-			assert equal(value.url, ~"/");
+			assert equal_strs(value.url, ~"/");
 			assert equal(value.headers.len(), 6u);
 			
-			assert equal(value.headers.get(~"host"), ~"localhost:8080");
-			assert equal(value.headers.get(~"user-agent"), ~"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:11.0) Gecko/20100101 Firefox/11.0");
-			assert equal(value.headers.get(~"accept"), ~"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-			assert equal(value.headers.get(~"accept-language"), ~"en-us,en;q=0.5");
-			assert equal(value.headers.get(~"accept-encoding"), ~"gzip, deflate");
-			assert equal(value.headers.get(~"connection"), ~"keep-alive");
+			assert equal_strs(value.headers.get(~"host"), ~"localhost:8080");
+			assert equal_strs(value.headers.get(~"user-agent"), ~"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:11.0) Gecko/20100101 Firefox/11.0");
+			assert equal_strs(value.headers.get(~"accept"), ~"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+			assert equal_strs(value.headers.get(~"accept-language"), ~"en-us,en;q=0.5");
+			assert equal_strs(value.headers.get(~"accept-encoding"), ~"gzip, deflate");
+			assert equal_strs(value.headers.get(~"connection"), ~"keep-alive");
 		}
 		result::Err(mesg) =>
 		{
@@ -217,7 +228,7 @@ fn test_unknown_method()
 		}
 		result::Err(mesg) =>
 		{
-			assert equal(mesg, ~"Expected 'HTTP/' on line 1 col 8");
+			assert equal_strs(mesg, ~"Expected 'HTTP/' on line 1 col 8");
 		}
 	}
 }
@@ -231,9 +242,9 @@ fn test_header_values()
 	{
 		result::Ok(value) =>
 		{
-			assert equal(value.headers.get(~"host"), ~"xxx");
-			assert equal(value.headers.get(~"blah"), ~"bbb");
-			assert equal(value.headers.get(~"multi"), ~"line1 line2 line3");
+			assert equal_strs(value.headers.get(~"host"), ~"xxx");
+			assert equal_strs(value.headers.get(~"blah"), ~"bbb");
+			assert equal_strs(value.headers.get(~"multi"), ~"line1 line2 line3");
 		}
 		result::Err(mesg) =>
 		{
@@ -252,7 +263,7 @@ fn test_extension_method()
 	{
 		result::Ok(value) =>
 		{
-			assert equal(value.method, ~"Explode");
+			assert equal_strs(value.method, ~"Explode");
 		}
 		result::Err(mesg) =>
 		{
@@ -271,7 +282,7 @@ fn test_encoded_url()
 	{
 		result::Ok(value) =>
 		{
-			assert equal(value.url, ~"/path with spaces");
+			assert equal_strs(value.url, ~"/path with spaces");
 		}
 		result::Err(mesg) =>
 		{
@@ -290,7 +301,7 @@ fn test_encoded_url2()
 	{
 		result::Ok(value) =>
 		{
-			assert equal(value.url, ~"/path 99with digits");
+			assert equal_strs(value.url, ~"/path 99with digits");
 		}
 		result::Err(mesg) =>
 		{
