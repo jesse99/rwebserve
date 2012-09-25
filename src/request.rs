@@ -297,12 +297,12 @@ priv fn process_template(config: &connection::ConnConfig, response: &Response, r
 	let (response, body) =
 		match load_template(config, &path)
 		{
-			result::Ok(v) =>
+			result::Ok(copy v) =>
 			{
 				// We found a legit template file.
-				(Response {status: response.status, ..*response}, copy v)		// hacky way to return a new Response without a copy
+				(Response {status: response.status, ..*response}, v)		// hacky way to return a new Response without a copy
 			}
-			result::Err(mesg) =>
+			result::Err(ref mesg) =>
 			{
 				// We failed to load the template so use the hard-coded config.read_error body.
 				let context = std::map::HashMap();
@@ -311,7 +311,7 @@ priv fn process_template(config: &connection::ConnConfig, response: &Response, r
 				
 				if config.server_info != ~"unit test"
 				{
-					error!("Error '%s' tying to read '%s'", mesg, path.to_str());
+					error!("Error '%s' tying to read '%s'", *mesg, path.to_str());
 				}
 				(make_initial_response(config, ~"403", ~"Forbidden", ~"text/html; charset=UTF-8", request), body)
 			}
@@ -643,14 +643,14 @@ fn bad_template()
 	
 	match load_template(&iconfig, &path::from_str(~"blah.html"))
 	{
-		result::Ok(v) =>
+		result::Ok(ref v) =>
 		{
-			io::stderr().write_line(~"Expected error but found: " + v);
+			io::stderr().write_line(~"Expected error but found: " + *v);
 			assert false;
 		}
-		result::Err(s) =>
+		result::Err(ref s) =>
 		{
-			assert str::contains(s, "mismatched curly braces");
+			assert str::contains(*s, "mismatched curly braces");
 		}
 	}
 }

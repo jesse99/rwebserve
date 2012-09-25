@@ -72,10 +72,10 @@ fn OpenSse(config: &connection::ConnConfig, request: &configuration::Request, pu
 {
 	match config.sse_openers.find(@copy request.path)
 	{
-		option::Some(opener) =>
+		option::Some(ref opener) =>
 		{
 			info!("opening sse for %s", request.path);
-			let sse = opener(config.settings, request, push_data);
+			let sse = (*opener)(config.settings, request, push_data);
 			config.sse_tasks.insert(@copy request.path, sse);
 			true
 		}

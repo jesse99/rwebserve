@@ -36,7 +36,7 @@ impl<K: Copy core::cmp::Eq, V: Copy> IMap<K, V> : ImmutableMap<K, V>
 	{
 		match vec::find(self, |e| {e.first() == key})
 		{
-			option::Some(e) =>
+			option::Some(ref e) =>
 			{
 				e.second()
 			}
@@ -68,7 +68,7 @@ impl<K: Copy core::cmp::Eq, V: Copy> IMap<K, V> : ImmutableMap<K, V>
 	{
 		match vec::find(self, |e| {e.first() == key})
 		{
-			option::Some(e) =>
+			option::Some(ref e) =>
 			{
 				option::Some(e.second())
 			}

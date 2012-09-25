@@ -76,21 +76,21 @@ fn match_template(path: ~str, components: ~[Component]) -> HashMap<@~str, @~str>
 		
 		match components[i]
 		{
-			Literal(s) =>
+			Literal(ref s) =>
 			{
-				if parts[i] != s
+				if parts[i] != *s
 				{
 					return std::map::HashMap();	// match failed
 				}
 			}
-			Variable(s) =>
+			Variable(copy s) =>
 			{
-				result.insert(@copy s, @copy parts[i]);
+				result.insert(@s, @copy parts[i]);
 			}
-			Trailer(s) =>
+			Trailer(copy s) =>
 			{
 				let path = vec::slice(parts, i, vec::len(parts));
-				result.insert(@copy s, @str::connect(path, ~"/"));
+				result.insert(@s, @str::connect(path, ~"/"));
 				i = vec::len(parts) - 1u;
 			}
 		}

@@ -75,9 +75,9 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: ~str, rem
 		debug!("-----------------------------------------------------------");
 		match comm::select2(sport, eport)
 		{
-			either::Left(option::Some(request)) =>
+			either::Left(option::Some(ref request)) =>
 			{
-				let (header, body) = process_request(&iconfig, &request, local_addr, remote_addr);
+				let (header, body) = process_request(&iconfig, request, local_addr, remote_addr);
 				write_response(sock, header, body);
 			}
 			either::Left(option::None) =>
@@ -85,10 +85,10 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: ~str, rem
 				sse::close_sses(&iconfig);
 				break;
 			}
-			either::Right(body) =>
+			either::Right(ref body) =>
 			{
 				let response = sse::make_response(&iconfig);
-				let (_, body) = make_header_and_body(&response, body);
+				let (_, body) = make_header_and_body(&response, *body);
 				write_response(sock, ~"", body);
 			}
 		}
@@ -106,14 +106,14 @@ priv fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<optio
 		{
 			match parse(headers)
 			{
-				result::Ok(request) =>
+				result::Ok(ref request) =>
 				{
 					if request.headers.contains_key(~"content-length")
 					{
 						let body = read_body(sock, request.headers.get(~"content-length"));
 						if str::is_not_empty(body)
 						{
-							comm::send(poke, option::Some(HttpRequest {body: body, ..request}));
+							comm::send(poke, option::Some(HttpRequest {body: body, ..*request}));
 						}
 						else
 						{
@@ -122,12 +122,12 @@ priv fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<optio
 					}
 					else
 					{
-						comm::send(poke, option::Some(copy request));
+						comm::send(poke, option::Some(copy *request));
 					}
 				}
-				result::Err(mesg) =>
+				result::Err(ref mesg) =>
 				{
-					error!("Couldn't parse: '%s' from %s", mesg, remote_addr);
+					error!("Couldn't parse: '%s' from %s", *mesg, remote_addr);
 					error!("%s", headers);
 				}
 			}
@@ -157,13 +157,13 @@ priv fn read_headers(remote_addr: ~str, sock: @socket::socket_handle) -> ~str un
 	{
 		match socket::recv(sock, 1u)			// TODO: need a timeout
 		{
-			result::Ok(result) =>
+			result::Ok(ref result) =>
 			{
 				vec::push(buffer, result.buffer[0]);
 			}
-			result::Err(mesg) =>
+			result::Err(ref mesg) =>
 			{
-				warn!("read_headers for %s failed with error: %s", remote_addr, mesg);
+				warn!("read_headers for %s failed with error: %s", remote_addr, *mesg);
 				return ~"";
 			}
 		}
@@ -208,7 +208,7 @@ priv fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str un
 	{
 		match socket::recv(sock, total_len - vec::len(buffer))			// TODO: need a timeout
 		{
-			result::Ok(result) =>
+			result::Ok(ref result) =>
 			{
 				let mut i = 0u;
 				while i < result.bytes
@@ -217,9 +217,9 @@ priv fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str un
 					i += 1u;
 				}
 			}
-			result::Err(mesg) =>
+			result::Err(ref mesg) =>
 			{
-				warn!("read_body failed with error: %s", mesg);
+				warn!("read_body failed with error: %s", *mesg);
 				return ~"";
 			}
 		}
@@ -351,7 +351,7 @@ pub fn to_route(&&input: (~str, ~str, ~str)) -> Route
 {
 	match input
 	{
-		(method, template_str, route) =>
+		(ref method, copy template_str, ref route) =>
 		{
 			let i = str::find_char(template_str, '<');
 			let (template, mime_type) = if option::is_some(i)
@@ -362,10 +362,10 @@ pub fn to_route(&&input: (~str, ~str, ~str)) -> Route
 				}
 				else
 				{
-					(copy template_str, ~"text/html")
+					(template_str, ~"text/html")
 				};
 			
-			Route {method: method, template: uri_template::compile(template), mime_type: mime_type, route: route}
+			Route {method: *method, template: uri_template::compile(template), mime_type: mime_type, route: *route}
 		}
 	}
 }

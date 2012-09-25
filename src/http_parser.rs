@@ -168,7 +168,7 @@ fn test_get_method1()
 	
 	match p(~"GET / HTTP/1.1\r\n\r\n")
 	{
-		result::Ok(value) =>
+		result::Ok(ref value) =>
 		{
 			assert equal_strs(value.method, ~"GET");
 			assert equal(value.major_version, 1);
@@ -176,9 +176,9 @@ fn test_get_method1()
 			assert equal_strs(value.url, ~"/");
 			assert equal(value.headers.len(), 0u);
 		}
-		result::Err(mesg) =>
+		result::Err(ref mesg) =>
 		{
-			io::stderr().write_line(mesg);
+			io::stderr().write_line(*mesg);
 			assert false;
 		}
 	}
@@ -191,7 +191,7 @@ fn test_get_method2()
 	
 	match p(~"GET / HTTP/1.1\r\nHost: localhost:8080\r\nUser-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:11.0) Gecko/20100101 Firefox/11.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept-Language: en-us,en;q=0.5\r\nAccept-Encoding: gzip, deflate\r\nConnection: keep-alive\r\n\r\n")
 	{
-		result::Ok(value) =>
+		result::Ok(ref value) =>
 		{
 			assert equal_strs(value.method, ~"GET");
 			assert equal(value.major_version, 1);
@@ -206,9 +206,9 @@ fn test_get_method2()
 			assert equal_strs(value.headers.get(~"accept-encoding"), ~"gzip, deflate");
 			assert equal_strs(value.headers.get(~"connection"), ~"keep-alive");
 		}
-		result::Err(mesg) =>
+		result::Err(ref mesg) =>
 		{
-			io::stderr().write_line(mesg);
+			io::stderr().write_line(*mesg);
 			assert false;
 		}
 	}
@@ -221,14 +221,14 @@ fn test_unknown_method()
 	
 	match p(~"GET / HXTP/1.1\r\n\r\n")
 	{
-		result::Ok(value) =>
+		result::Ok(ref value) =>
 		{
 			io::stderr().write_line(fmt!("Somehow parsed %?", value));
 			assert false;
 		}
-		result::Err(mesg) =>
+		result::Err(ref mesg) =>
 		{
-			assert equal_strs(mesg, ~"Expected 'HTTP/' on line 1 col 8");
+			assert equal_strs(*mesg, ~"Expected 'HTTP/' on line 1 col 8");
 		}
 	}
 }
@@ -240,15 +240,15 @@ fn test_header_values()
 	
 	match p(~"GET / HTTP/1.1\r\nHost:   \t xxx\r\nBlah:   \t bbb \t\r\nMulti: line1\r\n  \tline2\r\n  line3\r\n\r\n")
 	{
-		result::Ok(value) =>
+		result::Ok(ref value) =>
 		{
 			assert equal_strs(value.headers.get(~"host"), ~"xxx");
 			assert equal_strs(value.headers.get(~"blah"), ~"bbb");
 			assert equal_strs(value.headers.get(~"multi"), ~"line1 line2 line3");
 		}
-		result::Err(mesg) =>
+		result::Err(ref mesg) =>
 		{
-			io::stderr().write_line(mesg);
+			io::stderr().write_line(*mesg);
 			assert false;
 		}
 	}
@@ -261,13 +261,13 @@ fn test_extension_method()
 	
 	match p(~"Explode \t / HTTP/1.1\r\nHost: xxx\r\n\r\nsome text\nand more text")
 	{
-		result::Ok(value) =>
+		result::Ok(ref value) =>
 		{
 			assert equal_strs(value.method, ~"Explode");
 		}
-		result::Err(mesg) =>
+		result::Err(ref mesg) =>
 		{
-			io::stderr().write_line(mesg);
+			io::stderr().write_line(*mesg);
 			assert false;
 		}
 	}
@@ -280,13 +280,13 @@ fn test_encoded_url()
 	
 	match p(~"GET /path%20with%20spaces HTTP/1.1\r\n\r\n")
 	{
-		result::Ok(value) =>
+		result::Ok(ref value) =>
 		{
 			assert equal_strs(value.url, ~"/path with spaces");
 		}
-		result::Err(mesg) =>
+		result::Err(ref mesg) =>
 		{
-			io::stderr().write_line(mesg);
+			io::stderr().write_line(*mesg);
 			assert false;
 		}
 	}
@@ -299,13 +299,13 @@ fn test_encoded_url2()
 	
 	match p(~"GET /path%2099with%20digits HTTP/1.1\r\n\r\n")
 	{
-		result::Ok(value) =>
+		result::Ok(ref value) =>
 		{
 			assert equal_strs(value.url, ~"/path 99with digits");
 		}
-		result::Err(mesg) =>
+		result::Err(ref mesg) =>
 		{
-			io::stderr().write_line(mesg);
+			io::stderr().write_line(*mesg);
 			assert false;
 		}
 	}
