@@ -177,7 +177,7 @@ fn uptime_sse(registrar: StateChan, request: &server::Request, push: server::Pus
 {
 	let seconds = *request.params.get(@~"units") == ~"s";
 	
-	do spawn_moded_listener(task::ManualThreads(4))
+	do task::spawn_listener
 	|control_port: server::ControlPort|
 	{
 		info!("starting uptime sse stream");

@@ -68,8 +68,10 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: ~str, rem
 		fail;
 	}
 	
+	// read_requests needs to run on its own thread so it doesn't block this task.
 	let ra = copy remote_addr;
-	do task::spawn_sched(task::ManualThreads(2)) {read_requests(ra, fd, sch);}
+	do task::spawn_sched(task::SingleThreaded) {read_requests(ra, fd, sch);}
+	
 	loop
 	{
 		debug!("-----------------------------------------------------------");

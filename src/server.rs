@@ -17,7 +17,7 @@ fn start(config: &configuration::Config)
 	{
 		let host = copy *hostA;
 		let config2 = copy *config;
-		do task::spawn_sched(task::ManualThreads(1))
+		do task::spawn_sched(task::SingleThreaded)
 		|move host|
 		{
 			let r = do result::chain(socket::bind_socket(host, config2.port))
@@ -54,7 +54,10 @@ priv fn attach(config: &configuration::Config, host: ~str, shandle: @socket::soc
 		let host2 = copy host;
 		let ra2 = copy result.remote_addr;
 		let fd2 = copy result.fd;
-		do task::spawn_sched(task::ManualThreads(4)) |move config2| {handle_connection(&config2, fd2, host2, ra2)};	// TODO: use ThreadPerCore once it is implemented
+		
+		// We're called by a SingleThread which blocks so we need our own thread to avoid starvation.
+		// We'll go ahead and start two threads so routes can benefit from some parallelism.
+		do task::spawn_sched(task::ManualThreads(2)) |move config2| {handle_connection(&config2, fd2, host2, ra2)};
 		result::Ok(shandle)
 	};
 	attach(config, host, shandle)
