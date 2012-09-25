@@ -48,5 +48,5 @@ lib:
 bin/test-server: src/crate.rc src/*.rs
 	$(RUSTC) -L bin --test -o $@ $<
 
-bin/server: server/src/server.rc server/src/*.rs bin/librwebserve*
+bin/server: server/src/server.rc server/src/*.rs lib
 	$(RUSTC) -L bin -o $@ $<

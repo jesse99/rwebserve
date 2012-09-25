@@ -5,15 +5,15 @@
 #[license = "MIT"];
 #[doc = "Sample rrest web server"];
 
-#[allow(non_camel_case_types)];
-#[allow(implicit_copies)];
+#[forbid(unused_imports)];
+#[allow(structural_records)];
 #[allow(deprecated_mode)];
+#[allow(deprecated_pattern)];	// TODO: enable this
 #[allow(non_implicitly_copyable_typarams)];
-#[allow(deprecated_pattern)];
-#[allow(unused_imports)];
+#[allow(implicit_copies)];
 
-use std;
-use mustache (name = "mustache", vers = "0.1");
-use rwebserve (name = "rwebserve", vers = "0.2");
+extern mod std;
+extern mod mustache (name = "mustache", vers = "0.1");
+extern mod rwebserve (name = "rwebserve", vers = "0.2");
 
 mod main;

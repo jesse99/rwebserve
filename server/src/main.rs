@@ -2,11 +2,11 @@ use io::WriterUtil;
 use path::{Path};
 use mustache::*;
 use std::getopts::*;
-use std::map::hashmap;
+use std::map::HashMap;
 use server = rwebserve::rwebserve;
 use server::ImmutableMap;
 
-type options = {root: Path, admin: bool};
+type Options = {root: Path, admin: bool};
 
 // str constants aren't supported yet.
 // TODO: get this (somehow) from the link attribute in the rc file (going the other way
@@ -27,7 +27,7 @@ fn print_usage()
 	io::println(~"--version    prints the server version number and exits");
 } 
 
-fn parse_command_line(args: &[~str]) -> options
+fn parse_command_line(args: &[~str]) -> Options
 {
 	let opts = ~[
 		optflag(~"admin"),
@@ -71,7 +71,7 @@ fn parse_command_line(args: &[~str]) -> options
 	{root: path::from_str(opt_str(matched, ~"root")), admin: opt_present(matched, ~"admin")}
 }
 
-fn validate_options(options: options)
+fn validate_options(options: Options)
 {
 	if !os::path_is_dir(&options.root)
 	{
@@ -91,13 +91,13 @@ fn process_command_line(args: ~[~str]) -> ~str
 	str::slice(args[1], str::len("--root="), str::len(args[1]))
 }
 
-fn home_view(_settings: hashmap<@~str, @~str>, options: &options, _request: &server::Request, response: &server::Response) -> server::Response
+fn home_view(_settings: HashMap<@~str, @~str>, options: &Options, _request: &server::Request, response: &server::Response) -> server::Response
 {
 	response.context.insert(@~"admin", mustache::Bool(options.admin));
 	server::Response {template: ~"home.html", ..*response}
 }
 
-fn greeting_view(_settings: hashmap<@~str, @~str>, request: &server::Request, response: &server::Response) -> server::Response
+fn greeting_view(_settings: HashMap<@~str, @~str>, request: &server::Request, response: &server::Response) -> server::Response
 {
 	response.context.insert(@~"user-name", mustache::Str(request.matches.get(@~"name")));
 	server::Response {template: ~"hello.html", ..*response}
@@ -140,7 +140,7 @@ fn manage_state() -> StateChan
 	|state_port: comm::Port<StateMesg>|
 	{
 		let mut time = 0;
-		let listeners = std::map::str_hash();
+		let listeners = std::map::HashMap();
 		loop
 		{
 			time += 1;
