@@ -15,9 +15,10 @@ pub struct ConnConfig
 	pub resources_root: Path,
 	pub route_list: ~[configuration::Route],
 	pub views_table: HashMap<@~str, configuration::ResponseHandler>,
-	pub static_handlers: configuration::ResponseHandler,
+	pub static_handler: configuration::ResponseHandler,
+	pub is_template: IsTemplateFile,
 	pub sse_openers: HashMap<@~str, OpenSse>,		// key is a GET path
-	pub sse_tasks: HashMap<@~str, ControlChan>,	// key is a GET path
+	pub sse_tasks: HashMap<@~str, ControlChan>,		// key is a GET path
 	pub sse_push: comm::Chan<~str>,
 	pub missing: configuration::ResponseHandler,
 	pub static_type_table: HashMap<@~str, @~str>,
@@ -38,15 +39,16 @@ pub fn config_to_conn(config: &configuration::Config, push: comm::Chan<~str>) ->
 		resources_root: config.resources_root,
 		route_list: vec::map(config.routes, to_route),
 		views_table: utils::boxed_hash_from_strs(config.views),
-		static_handlers: copy(config.static_handlers),
+		static_handler: copy config.static_handler,
+		is_template: copy config.is_template,
 		sse_openers: utils::boxed_hash_from_strs(config.sse),
 		sse_tasks: std::map::HashMap(),
 		sse_push: push,
-		missing: copy(config.missing),
+		missing: copy config.missing,
 		static_type_table: utils::to_boxed_str_hash(config.static_types),
 		read_error: config.read_error,
-		load_rsrc: copy(config.load_rsrc),
-		valid_rsrc: copy(config.valid_rsrc),
+		load_rsrc: copy config.load_rsrc,
+		valid_rsrc: copy config.valid_rsrc,
 		settings: utils::to_boxed_str_hash(config.settings),
 	}
 }
@@ -54,13 +56,13 @@ pub fn config_to_conn(config: &configuration::Config, push: comm::Chan<~str>) ->
 // TODO: probably want to use task::unsupervise
 pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: ~str, remote_addr: ~str)
 {
-	let sport = comm::Port();
-	let sch = comm::Chan(sport);
-	let eport = comm::Port();
-	let ech = comm::Chan(eport);
+	let request_port = comm::Port();
+	let request_chan = comm::Chan(request_port);
+	let sse_port = comm::Port();
+	let sse_chan = comm::Chan(sse_port);
 	let sock = @socket::socket_handle(fd);
 	
-	let iconfig = config_to_conn(config, ech);
+	let iconfig = config_to_conn(config, sse_chan);
 	let err = validate_config(&iconfig);
 	if str::is_not_empty(err)
 	{
@@ -70,12 +72,12 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: ~str, rem
 	
 	// read_requests needs to run on its own thread so it doesn't block this task.
 	let ra = copy remote_addr;
-	do task::spawn_sched(task::SingleThreaded) {read_requests(ra, fd, sch);}
+	do task::spawn_sched(task::SingleThreaded) {read_requests(ra, fd, request_chan);}
 	
 	loop
 	{
 		debug!("-----------------------------------------------------------");
-		match comm::select2(sport, eport)
+		match comm::select2(request_port, sse_port)
 		{
 			either::Left(option::Some(ref request)) =>
 			{
@@ -90,7 +92,7 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: ~str, rem
 			either::Right(ref body) =>
 			{
 				let response = sse::make_response(&iconfig);
-				let (_, body) = make_header_and_body(&response, *body);
+				let (_, body) = make_header_and_body(&response, str::to_bytes(*body));
 				write_response(sock, ~"", body);
 			}
 		}
@@ -243,14 +245,10 @@ priv fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str un
 
 // TODO: check connection: keep-alive
 // TODO: presumbably when we switch to a better socket library we'll be able to handle errors here...
-priv fn write_response(sock: @socket::socket_handle, header: ~str, body: ~str)
+priv fn write_response(sock: @socket::socket_handle, header: ~str, body: ~[u8]) unsafe
 {
-	// It's probably more efficient to do the concatenation rather than two sends because
-	// we'll avoid a context switch into the kernel. In any case this seems to increase the
-	// likelihood of the network stack putting all of this into a single packet which makes
-	// packets easier to analyze.
-	let data = header + body;
-	do str::as_buf(data) |buffer, _len| {socket::send_buf(sock, buffer, str::len(data))};
+	do str::as_buf(header) |buffer, _len| {socket::send_buf(sock, buffer, header.len())};
+	socket::send_buf(sock, vec::raw::to_ptr(body), body.len());
 }
 
 priv fn validate_config(config: &ConnConfig) -> ~str
@@ -383,9 +381,9 @@ fn routes_must_have_views()
 		views: ~[(~"home",  missing_view)],
 		..initialize_config()};
 		
-	let eport = comm::Port();
-	let ech = comm::Chan(eport);
-	let iconfig = config_to_conn(&config, ech);
+	let sse_port = comm::Port();
+	let sse_chan = comm::Chan(sse_port);
+	let iconfig = config_to_conn(&config, sse_chan);
 	
 	assert validate_config(&iconfig) == ~"No views for the following routes: farewell, greeting";
 }
@@ -401,9 +399,9 @@ fn views_must_have_routes()
 		views: ~[(~"home",  missing_view), (~"greeting",  missing_view), (~"goodbye",  missing_view)],
 		..initialize_config()};
 		
-	let eport = comm::Port();
-	let ech = comm::Chan(eport);
-	let iconfig = config_to_conn(&config, ech);
+	let sse_port = comm::Port();
+	let sse_chan = comm::Chan(sse_port);
+	let iconfig = config_to_conn(&config, sse_chan);
 	
 	assert validate_config(&iconfig) == ~"No routes for the following views: goodbye, greeting";
 }
@@ -419,9 +417,9 @@ fn root_must_have_required_files()
 		views: ~[(~"home",  missing_view)],
 		..initialize_config()};
 		
-	let eport = comm::Port();
-	let ech = comm::Chan(eport);
-	let iconfig = config_to_conn(&config, ech);
+	let sse_port = comm::Port();
+	let sse_chan = comm::Chan(sse_port);
+	let iconfig = config_to_conn(&config, sse_chan);
 	
 	assert validate_config(&iconfig) == ~"Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";
 }

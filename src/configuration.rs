@@ -1,5 +1,5 @@
 //! Types and functions used to configure rwebserve.
-use path::{Path};
+use Path = path::Path;
 use std::map::*;
 use mustache::*;
 use sse::*;
@@ -11,9 +11,10 @@ use sse::*;
 /// * server_info is included in the HTTP response and should include the server name and version.
 /// * resources_root should be a path to where the files associated with URLs are loaded from.
 /// * routes: maps HTTP methods ("GET") and URI templates ("hello/{name}") to route names ("greeting"). 
-/// To support non-text/html types append the template with "<some/type>".
+///    To support non-text/html types append the template with "<some/type>".
 /// * views: maps route names to view handler functions.
-/// * static: used to handle URIs that don't match routes, but are found beneath resources_root.
+/// * static_handler: used to handle URIs that don't match routes, but are found beneath resources_root.
+/// * is_template: returns true if the path is to a mustache template.
 /// * sse: maps EventSource path to a function that creates a task to push server-sent events.
 /// * missing: used to handle URIs that don't match routes, and are not found beneath resources_root.
 /// * static_types: maps file extensions (including the period) to mime types.
@@ -32,7 +33,8 @@ struct Config
 	pub resources_root: Path,
 	pub routes: ~[(~str, ~str, ~str)],					// better to use hashmap, but hashmaps cannot be sent
 	pub views: ~[(~str, ResponseHandler)],
-	pub static_handlers: ResponseHandler,
+	pub static_handler: ResponseHandler,
+	pub is_template: IsTemplateFile,
 	pub sse: ~[(~str, OpenSse)],
 	pub missing: ResponseHandler,
 	pub static_types: ~[(~str, ~str)],
@@ -72,7 +74,8 @@ struct Request
 /// 
 /// * status: the status code and message for the response, defaults to "200 OK".
 /// * headers: the HTTP headers to be included in the response.
-/// * body: contents of the section after headers.
+/// * body: contents the section after headers (for text).
+/// * bytes: contents the section after headers (for binary).
 /// * template: path relative to resources_root containing a template file.
 /// * context: hashmap used when rendering the template file.
 /// 
@@ -83,6 +86,7 @@ struct Response
 	pub status: ~str,
 	pub headers: HashMap<@~str, @~str>,
 	pub body: ~str,
+	pub bytes: ~[u8],
 	pub template: ~str,				// an URL path is very similar to a path::PosixPath, but that is conditionally compiled in
 	pub context: HashMap<@~str, mustache::Data>,
 	
@@ -109,10 +113,13 @@ struct Response
 /// * context: new entries will often be added. If template is not actually a template file empty the context.
 /// 
 /// After the function returns a base-path entry is added to the response.context with the url to the directory containing the template file.
-type ResponseHandler = fn~ (settings: HashMap<@~str, @~str>, request: &Request, response: &Response) -> Response;
+type ResponseHandler = fn~ (config: &connection::ConnConfig, request: &Request, response: &Response) -> Response;
+
+/// Returns true if the file at path should be treated as a mustache template.
+type IsTemplateFile = fn~ (config: &connection::ConnConfig, path: &str) -> bool;
 
 /// Maps a path rooted at resources_root to a resource body.
-type RsrcLoader = fn~ (path: &Path) -> result::Result<~str, ~str>;
+type RsrcLoader = fn~ (path: &Path) -> result::Result<~[u8], ~str>;
 
 /// Returns true if a path rooted at resources_root points to a file.
 type RsrcExists = fn~ (path: &Path) -> bool;
@@ -128,7 +135,8 @@ struct Route
 /// Initalizes several config fields.
 /// 
 /// * port is initialized to 80.
-/// * static is initialized to a reasonable view handler.
+/// * static_handler is initialized to a reasonable view handler.
+/// * is_template: is initialized to a function that returns true if the file has an extension of text/plain mime type.
 /// * missing is initialized to a view that assume a \"not-found.html\" is at the root.
 /// * static_types is given entries for audio, image, video, and text extensions.
 /// * read_error is initialized to a reasonable English language html error message.
@@ -144,7 +152,8 @@ fn initialize_config() -> Config
 		resources_root: path::from_str(~""),
 		routes: ~[],
 		views: ~[],
-		static_handlers: static_view,
+		static_handler: static_view,
+		is_template: is_text_file,
 		sse: ~[],
 		missing: missing_view,
 		static_types: ~[
@@ -180,7 +189,7 @@ fn initialize_config() -> Config
 	<title>Error 403 (Forbidden)!</title>
 	
 	<p>Could not read URL {{request-path}}.</p>",
-		load_rsrc: io::read_whole_file_str,
+		load_rsrc: io::read_whole_file,
 		valid_rsrc: is_valid_rsrc,
 		settings: ~[],
 	}
@@ -191,16 +200,54 @@ fn is_valid_rsrc(path: &Path) -> bool
 	os::path_exists(path) && !os::path_is_dir(path)
 }
 
-// Default config.static view handler.
-fn static_view(_settings: HashMap<@~str, @~str>, _request: &Request, response: &Response) -> Response
-{
-	let path = mustache::render_str(~"{{request-path}}", response.context);
-	Response {body: ~"", template: path, context: std::map::HashMap(), ..*response}
-}
-
 // Default config.missing handler. Assumes that there is a "not-found.html"
 // file at the resource root.
-fn missing_view(_settings: HashMap<@~str, @~str>, _request: &Request, response: &Response) -> Response
+fn missing_view(_config: &connection::ConnConfig, _request: &Request, response: &Response) -> Response
 {
 	Response {template: ~"not-found.html", ..*response}
+}
+
+// Default config.static view handler.
+//
+// Note that this treats files which have a text mime type as mustache templates. More typically
+// only files ending with ".mustache" are treated as text. We don't do that because:
+// 1) It's expected that expanding a non-template file is not going to be a performance problem.
+// 2) Using files like *.html.mustache screws up syntax highlighting in editors.
+// 3) Users can install a new is_template closure to do something different.
+fn static_view(config: &connection::ConnConfig, _request: &Request, response: &Response) -> Response
+{
+	let path = mustache::render_str(~"{{request-path}}", response.context);
+	if config.is_template(config, path)
+	{
+		Response {body: ~"", template: path, context: std::map::HashMap(), ..*response}
+	}
+	else
+	{
+		let path = utils::url_to_path(&config.resources_root, path);
+		match config.load_rsrc(&path)
+		{
+			result::Ok(ref contents) => Response {bytes: *contents, template: ~"", context: std::map::HashMap(), ..*response},
+			result::Err(ref err) => {error!("failed to open %s: %s", path.to_str(), *err); Response {template: ~"not-found.html", ..*response}},
+		}
+	}
+}
+
+fn is_text_file(config: &connection::ConnConfig, path: &str) -> bool
+{
+	match str::rfind_char(path, '.')
+	{
+		option::Some(index) =>
+		{
+			let ext = path.slice(index, path.len());
+			match config.static_type_table.find(@ext)
+			{
+				option::Some(mine_type) => mine_type.starts_with(~"text/"),
+				option::None => false,
+			}
+		}
+		option::None =>
+		{
+			false
+		}
+	} 
 }

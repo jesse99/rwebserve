@@ -5,6 +5,10 @@ use std::getopts::*;
 use std::map::HashMap;
 use server = rwebserve::rwebserve;
 use server::ImmutableMap;
+use ConnConfig = rwebserve::connection::ConnConfig;
+use Request = rwebserve::rwebserve::Request;
+use Response = rwebserve::rwebserve::Response;
+use ResponseHandler = rwebserve::rwebserve::ResponseHandler;
 
 type Options = {root: Path, admin: bool};
 
@@ -91,16 +95,16 @@ fn process_command_line(args: ~[~str]) -> ~str
 	str::slice(args[1], str::len("--root="), str::len(args[1]))
 }
 
-fn home_view(_settings: HashMap<@~str, @~str>, options: &Options, _request: &server::Request, response: &server::Response) -> server::Response
+fn home_view(_config: &ConnConfig, options: &Options, _request: &Request, response: &Response) -> Response
 {
 	response.context.insert(@~"admin", mustache::Bool(options.admin));
-	server::Response {template: ~"home.html", ..*response}
+	Response {template: ~"home.html", ..*response}
 }
 
-fn greeting_view(_settings: HashMap<@~str, @~str>, request: &server::Request, response: &server::Response) -> server::Response
+fn greeting_view(_config: &ConnConfig, request: &Request, response: &Response) -> Response
 {
 	response.context.insert(@~"user-name", mustache::Str(request.matches.get(@~"name")));
-	server::Response {template: ~"hello.html", ..*response}
+	Response {template: ~"hello.html", ..*response}
 }
 
 enum StateMesg
@@ -173,7 +177,7 @@ fn manage_state() -> StateChan
 // Each client connection that hits /uptime will cause an instance of this task to run. When
 // manage_state tells us that the world has changed we push the new world (an int in
 // this case) out to the client.
-fn uptime_sse(registrar: StateChan, request: &server::Request, push: server::PushChan) -> server::ControlChan
+fn uptime_sse(registrar: StateChan, request: &Request, push: server::PushChan) -> server::ControlChan
 {
 	let seconds = *request.params.get(@~"units") == ~"s";
 	
@@ -231,14 +235,13 @@ fn main(args: ~[~str])
 	// This is an example of how additional information can be communicated to
 	// a view handler (in this case we're only communicating options.admin so
 	// using settings would be simpler).
-	let options2 = copy options;
-	let home: server::ResponseHandler = |settings, request: &server::Request, response: &server::Response| {home_view(settings, &options2, request, response)};
-	let bail: server::ResponseHandler = |_settings, _request: &server::Request, _response: &server::Response|
-	{
-		info!("received shutdown request");
-		libc::exit(0)
-	};
-	let up: server::OpenSse = |_settings, request: &server::Request, push| {uptime_sse(registrar, request, push)};
+	let up: server::OpenSse = |_config: &ConnConfig, request: &Request, push| {uptime_sse(registrar, request, push)};
+	
+	// TODO: Shouldn't need all of these damned explicit types but rustc currently
+	// has problems with type inference woth closures and borrowed pointers.
+	let greeting_v: ResponseHandler = greeting_view;
+	let home_v: ResponseHandler = |config: &ConnConfig, request: &Request, response: &Response, copy options| {home_view(config, &options, request, response)};
+	let shutdown_v: ResponseHandler = |_config: &ConnConfig, _request: &Request, _response: &Response| {info!("received shutdown request"); libc::exit(0)};
 	
 	let config = server::Config
 	{
@@ -252,9 +255,9 @@ fn main(args: ~[~str])
 			(~"GET", ~"/hello/{name}", ~"greeting"),
 		],
 		views: ~[
-			(~"home",  home),
-			(~"shutdown",  bail),
-			(~"greeting", greeting_view),
+			(~"greeting", greeting_v),
+			(~"home",  home_v),
+			(~"shutdown",  shutdown_v),
 		],
 		sse: ~[(~"/uptime", up)],
 		settings: ~[(~"debug",  ~"true")],

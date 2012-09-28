@@ -7,6 +7,7 @@ RESTful Web Services Cookbook
 tcpdump -i lo0 -w packets.pcap tcp
 
 
+* Should add an image to sample server (or just add support for favicon.ico)
 * Log client ip, method, url
 * Need a way for users to generate URLs:
 	- also need to encode them if they have bad chars

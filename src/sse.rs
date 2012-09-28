@@ -10,7 +10,7 @@ use mustache::*;
 ///
 /// The hashmap contains the config settings. The PushChan allows the
 /// task to push data to the client.
-type OpenSse = fn~ (config: HashMap<@~str, @~str>, request: &configuration::Request, channel: PushChan) -> ControlChan;
+type OpenSse = fn~ (config: &connection::ConnConfig, request: &configuration::Request, channel: PushChan) -> ControlChan;
 
 /// The channel used by server tasks to send data to a client.
 ///
@@ -38,7 +38,7 @@ enum ControlEvent
 }
 
 // This is invoked when the client sends a GET on behalf of an event source.
-fn process_sse(config: &connection::ConnConfig, request: &configuration::Request) -> (configuration::Response, ~str)
+fn process_sse(config: &connection::ConnConfig, request: &configuration::Request) -> (configuration::Response, ~[u8])
 {
 	let mut code = ~"200";
 	let mut mesg = ~"OK";
@@ -64,7 +64,7 @@ fn process_sse(config: &connection::ConnConfig, request: &configuration::Request
 	let response = request::make_initial_response(config, code, mesg, mime, request);
 	response.headers.insert(@~"Transfer-Encoding", @~"chunked");
 	response.headers.insert(@~"Cache-Control", @~"no-cache");
-	(response, ~"\n\n")
+	(response, str::to_bytes(~"\n\n"))
 }
 
 // TODO: Chrome, at least, doesn't seem to close EventSources so we need to time these out.
@@ -75,7 +75,7 @@ fn OpenSse(config: &connection::ConnConfig, request: &configuration::Request, pu
 		option::Some(ref opener) =>
 		{
 			info!("opening sse for %s", request.path);
-			let sse = (*opener)(config.settings, request, push_data);
+			let sse = (*opener)(config, request, push_data);
 			config.sse_tasks.insert(@copy request.path, sse);
 			true
 		}
@@ -107,6 +107,6 @@ fn make_response(config: &connection::ConnConfig) -> configuration::Response
 		(~"Transfer-Encoding", ~"chunked"),
 	]);
 	
-	configuration::Response {status: ~"200 OK", headers: headers, body: ~"", template: ~"", context: std::map::HashMap()}
+	configuration::Response {status: ~"200 OK", headers: headers, body: ~"", bytes: ~[], template: ~"", context: std::map::HashMap()}
 }
 
