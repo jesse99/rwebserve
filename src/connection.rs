@@ -89,10 +89,10 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: ~str, rem
 				sse::close_sses(&iconfig);
 				break;
 			}
-			either::Right(ref body) =>
+			either::Right(move body) =>
 			{
 				let response = sse::make_response(&iconfig);
-				let (_, body) = make_header_and_body(&response, str::to_bytes(*body));
+				let (_, body) = make_header_and_body(&response, StringBody(@body));
 				write_response(sock, ~"", body);
 			}
 		}
@@ -245,10 +245,29 @@ priv fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str un
 
 // TODO: check connection: keep-alive
 // TODO: presumbably when we switch to a better socket library we'll be able to handle errors here...
-priv fn write_response(sock: @socket::socket_handle, header: ~str, body: ~[u8]) unsafe
+priv fn write_response(sock: @socket::socket_handle, header: ~str, body: Body) unsafe
 {
+	fn write_body(sock: @socket::socket_handle, body: &Body) unsafe
+	{
+		match *body
+		{
+			StringBody(text) =>
+			{
+				do str::as_buf(*text) |buffer, _len| 	{socket::send_buf(sock, buffer, text.len())};
+			}
+			BinaryBody(binary) =>
+			{
+				socket::send_buf(sock, vec::raw::to_ptr(*binary), binary.len());
+			}
+			CompoundBody(parts) =>
+			{
+				for parts.each |part| {write_body(sock, *part)};
+			}
+		}
+	}
+	
 	do str::as_buf(header) |buffer, _len| {socket::send_buf(sock, buffer, header.len())};
-	socket::send_buf(sock, vec::raw::to_ptr(body), body.len());
+	write_body(sock, &body);
 }
 
 priv fn validate_config(config: &ConnConfig) -> ~str

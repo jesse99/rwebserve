@@ -3,6 +3,7 @@ use Path = path::Path;
 use std::map::*;
 use mustache::*;
 use sse::*;
+use std::base64::*;
 
 /// Configuration information for the web server.
 /// 
@@ -74,8 +75,7 @@ struct Request
 /// 
 /// * status: the status code and message for the response, defaults to "200 OK".
 /// * headers: the HTTP headers to be included in the response.
-/// * body: contents the section after headers (for text).
-/// * bytes: contents the section after headers (for binary).
+/// * body: contents the section after headers.
 /// * template: path relative to resources_root containing a template file.
 /// * context: hashmap used when rendering the template file.
 /// 
@@ -85,12 +85,46 @@ struct Response
 {
 	pub status: ~str,
 	pub headers: HashMap<@~str, @~str>,
-	pub body: ~str,
-	pub bytes: ~[u8],
+	pub body: Body,
 	pub template: ~str,				// an URL path is very similar to a path::PosixPath, but that is conditionally compiled in
 	pub context: HashMap<@~str, mustache::Data>,
 	
 	drop {}			// TODO: enable this (was getting a compiler assert earlier)
+}
+
+/// The part of an HTTP response that comes after the headers.
+///
+/// The type of an HTTP body is determined by the content-type header. If it is a text mime type
+/// then the body with be some flavor of text. However for types like image/png the body will
+/// be binary data. This type allows us to avoid copying a text reply to a byte buffer.
+enum Body
+{
+	StringBody(@~str),
+	BinaryBody(@~[u8]),
+	CompoundBody(@[@Body]),		// concatenation of strings and vectors blows if they are large
+}
+
+impl Body : ToStr
+{
+	fn to_str() -> ~str
+	{
+		match self
+		{
+			StringBody(text) =>
+			{
+				copy *text
+			}
+			BinaryBody(_binary) =>
+			{
+				// Not that useful to print binary data and it can be huge so we'll punt on it.
+				~"<binary data>"
+			}
+			CompoundBody(parts) =>
+			{
+				do parts.foldl(~"") |result, part| {result + part.to_str()}
+			}
+		}
+	}
 }
 
 /// Function used to generate an HTTP response.
@@ -219,15 +253,20 @@ fn static_view(config: &connection::ConnConfig, _request: &Request, response: &R
 	let path = mustache::render_str(~"{{request-path}}", response.context);
 	if config.is_template(config, path)
 	{
-		Response {body: ~"", template: path, context: std::map::HashMap(), ..*response}
+		Response {body: StringBody(@~""), template: path, context: std::map::HashMap(), ..*response}
 	}
 	else
 	{
 		let path = utils::url_to_path(&config.resources_root, path);
-		match config.load_rsrc(&path)
+		let contents = config.load_rsrc(&path);
+		if contents.is_ok()
 		{
-			result::Ok(ref contents) => Response {bytes: *contents, template: ~"", context: std::map::HashMap(), ..*response},
-			result::Err(ref err) => {error!("failed to open %s: %s", path.to_str(), *err); Response {template: ~"not-found.html", ..*response}},
+			Response {body: BinaryBody(@result::unwrap(contents)), template: ~"", context: std::map::HashMap(), ..*response}
+		}
+		else
+		{
+			error!("failed to open %s: %s", path.to_str(), contents.get_err());
+			Response {template: ~"not-found.html", ..*response}
 		}
 	}
 }
