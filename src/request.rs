@@ -676,7 +676,7 @@ fn bad_template()
 	{
 		result::Ok(ref v) =>
 		{
-			io::stderr().write_line(~"Expected error but found: " + *v);
+			io::stderr().write_line(~"Expected error but found: " + **v);
 			assert false;
 		}
 		result::Err(ref s) =>
