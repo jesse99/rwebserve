@@ -41,9 +41,11 @@ update-libraries:
 # 3) The compiler gives it some crazy name like "librwebserve-da45653350eb4f90-0.1.dylib"
 # which is dependent on some hash(?) as well as the current platform. (And -o works when
 # setting an executable's name, but not libraries).
+#
+# TODO: enable optimizations (-O), disabled because it can cause problems with back traces
 .PHONY : lib
 lib:
-	$(RUSTC) --out-dir bin -L bin -O src/crate.rc
+	$(RUSTC) --out-dir bin -L bin src/crate.rc
 
 bin/test-server: src/crate.rc src/*.rs
 	$(RUSTC) -L bin --test -o $@ $<
