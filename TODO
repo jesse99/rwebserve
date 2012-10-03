@@ -18,6 +18,8 @@ tcpdump -i lo0 -w packets.pcap tcp
    - or maybe use a status enum
 * 201 requires location header
 * Review status 411 and 415
+* Should be a way to configure number of threads per connection
+	- rust-socket and (I think) uv will create a single thread for each connection
 * Work on http support:
 	- timeout connections
 	- handle continue, 8.2.3

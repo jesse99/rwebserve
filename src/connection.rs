@@ -105,6 +105,7 @@ priv fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<optio
 	let parse = make_parser();
 	loop
 	{
+		let mut ok = false;
 		let headers = read_headers(remote_addr, sock);
 		if str::is_not_empty(headers)
 		{
@@ -118,15 +119,13 @@ priv fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<optio
 						if str::is_not_empty(body)
 						{
 							comm::send(poke, option::Some(HttpRequest {body: body, ..*request}));
-						}
-						else
-						{
-							info!("Ignoring %s and %s from %s", headers, utils::truncate_str(body, 80), remote_addr);
+							ok = true;
 						}
 					}
 					else
 					{
 						comm::send(poke, option::Some(copy *request));
+						ok = true;
 					}
 				}
 				result::Err(ref mesg) =>
@@ -136,7 +135,7 @@ priv fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<optio
 				}
 			}
 		}
-		else
+		if !ok
 		{
 			// Client closed connection or there was some sort of error
 			// (in which case the client will re-open a connection).
@@ -163,7 +162,15 @@ priv fn read_headers(remote_addr: ~str, sock: @socket::socket_handle) -> ~str un
 		{
 			result::Ok(ref result) =>
 			{
-				vec::push(buffer, result.buffer[0]);
+				if result.bytes > 0
+				{
+					vec::push(buffer, result.buffer[0]);
+				}
+				else
+				{
+					// peer has closed its side of the connection
+					return ~"";
+				}
 			}
 			result::Err(ref mesg) =>
 			{
@@ -214,11 +221,19 @@ priv fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str un
 		{
 			result::Ok(ref result) =>
 			{
-				let mut i = 0u;
-				while i < result.bytes
+				if result.bytes > 0
 				{
-					vec::push(buffer, result.buffer[i]);
-					i += 1u;
+					let mut i = 0u;
+					while i < result.bytes
+					{
+						vec::push(buffer, result.buffer[i]);
+						i += 1u;
+					}
+				}
+				else
+				{
+					// peer has closed its side of the connection
+					return ~"";
 				}
 			}
 			result::Err(ref mesg) =>
