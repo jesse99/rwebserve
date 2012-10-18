@@ -1,7 +1,6 @@
 /// Server-sent event support.
 // http://www.w3.org/TR/2009/WD-html5-20090212/comms.html
 // http://dev.w3.org/html5/eventsource
-//use mustache::*;
 
 /// Called by the server to spin up a task for an sse session. Returns a
 /// channel that the server uses to communicate with the task.

@@ -1,8 +1,6 @@
 //! Types and functions used to configure rwebserve.
 //use mustache::*;
 use std::base64::*;
-//use std::serialization::{Serializable, Serializer};
-//use std::json::Json;
 
 /// Configuration information for the web server.
 /// 

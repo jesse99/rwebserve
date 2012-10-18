@@ -1,5 +1,3 @@
-use std::map::*;
-
 // Components of a template path.
 pub enum Component
 {

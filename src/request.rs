@@ -1,7 +1,6 @@
 //! Handles an incoming request from a client connection and sends a response.
 use io::WriterUtil;
 use http_parser::{HttpRequest};
-//use utils::*;
 
 // TODO:
 // include last-modified and maybe etag

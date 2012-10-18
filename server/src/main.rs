@@ -1,6 +1,6 @@
 use io::WriterUtil;
 use path::{Path};
-use mustache::*;
+//use mustache::*;
 use std::getopts::*;
 use std::map::HashMap;
 use server = rwebserve::rwebserve;
@@ -47,7 +47,7 @@ fn parse_command_line(args: &[~str]) -> Options
 	{
 		if i > 0
 		{
-			vec::push(t, copy(a));
+			vec::push(&mut t, a.to_unique());
 		}
 	}
 	//let t = vec::tail(args);
@@ -121,11 +121,11 @@ type StateChan = comm::Chan<StateMesg>;
 fn spawn_moded_listener<A: Send>(mode: task::SchedMode, +f: fn~(comm::Port<A>)) -> comm::Chan<A>
 {
 	let setup_po = comm::Port();
-	let setup_ch = comm::Chan(setup_po);
+	let setup_ch = comm::Chan(&setup_po);
 	do task::spawn_sched(mode)
 	{
 		let po = comm::Port();
-		let ch = comm::Chan(po);
+		let ch = comm::Chan(&po);
 		comm::send(setup_ch, ch);
 		f(po);
 	}
@@ -186,9 +186,9 @@ fn uptime_sse(registrar: StateChan, request: &Request, push: server::PushChan) -
 	{
 		info!("starting uptime sse stream");
 		let notify_port = comm::Port();
-		let notify_chan = comm::Chan(notify_port);
+		let notify_chan = comm::Chan(&notify_port);
 		
-		let key = fmt!("uptime %?", ptr::addr_of(notify_port));
+		let key = fmt!("uptime %?", ptr::addr_of(&notify_port));
 		comm::send(registrar, AddListener(key, notify_chan));
 		
 		loop
@@ -225,9 +225,9 @@ fn uptime_sse(registrar: StateChan, request: &Request, push: server::PushChan) -
 	}
 }
 
-fn main(args: ~[~str])
+fn main()
 {
-	let options = parse_command_line(args);
+	let options = parse_command_line(os::args());
 	validate_options(options);
 	
 	let registrar = manage_state();

@@ -1,6 +1,5 @@
 //! The module responsible for communication using a persistent connection to a client.
 //use socket::*;
-//use http_parser::*;
 use request::{process_request, make_header_and_body};
 
 // Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.

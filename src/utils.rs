@@ -1,7 +1,5 @@
 //! Misc functions used internally.
 use io::WriterUtil;
-use std::map::*;
-use path::Path;
 
 // The url should be the path component of an URL. It will usually be
 // an absolute path which is actually relative to root.
