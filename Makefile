@@ -29,7 +29,7 @@ install:
 # You can either use this target (assuming that the libraries are in /usr/local/lib/rust)
 # or install them via cargo.
 update-libraries:
-	cp /usr/local/lib/rust/libmustache-*-0.1.dylib bin
+	cp /usr/local/lib/rust/libmustache-*-0.3pre.dylib bin
 	cp /usr/local/lib/rust/libsocket-*-0.1.dylib bin
 	cp /usr/local/lib/rust/librparse-*-0.6.dylib bin
 

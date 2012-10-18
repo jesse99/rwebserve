@@ -1,10 +1,11 @@
 //! The module responsible for communication using a persistent connection to a client.
-use socket::*;
-use configuration::*;
-use http_parser::*;
+//use socket::*;
+use std::map::*;
+//use configuration::*;
+//use http_parser::*;
 use imap::*;
 use request::{process_request, make_header_and_body};
-use sse::*;
+//use sse::*;
 
 // Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.
 pub struct ConnConfig
@@ -16,9 +17,9 @@ pub struct ConnConfig
 	pub route_list: ~[configuration::Route],
 	pub views_table: HashMap<@~str, configuration::ResponseHandler>,
 	pub static_handler: configuration::ResponseHandler,
-	pub is_template: IsTemplateFile,
-	pub sse_openers: HashMap<@~str, OpenSse>,		// key is a GET path
-	pub sse_tasks: HashMap<@~str, ControlChan>,		// key is a GET path
+	pub is_template: configuration::IsTemplateFile,
+	pub sse_openers: HashMap<@~str, sse::OpenSse>,		// key is a GET path
+	pub sse_tasks: HashMap<@~str, sse::ControlChan>,	// key is a GET path
 	pub sse_push: comm::Chan<~str>,
 	pub missing: configuration::ResponseHandler,
 	pub static_type_table: HashMap<@~str, @~str>,
@@ -54,13 +55,13 @@ pub fn config_to_conn(config: &configuration::Config, push: comm::Chan<~str>) ->
 }
 
 // TODO: probably want to use task::unsupervise
-pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: ~str, remote_addr: ~str)
+pub fn handle_connection(config: &configuration::Config, fd: libc::c_int, local_addr: &str, remote_addr: &str)
 {
 	let request_port = comm::Port();
-	let request_chan = comm::Chan(request_port);
+	let request_chan = comm::Chan(&request_port);
 	let sse_port = comm::Port();
-	let sse_chan = comm::Chan(sse_port);
-	let sock = @socket::socket_handle(fd);
+	let sse_chan = comm::Chan(&sse_port);
+	let sock = @socket::socket::socket_handle(fd);
 	
 	let iconfig = config_to_conn(config, sse_chan);
 	let err = validate_config(&iconfig);
@@ -70,8 +71,8 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: ~str, rem
 		fail;
 	}
 	
-	// read_requests needs to run on its own thread so it doesn't block this task.
-	let ra = copy remote_addr;
+	// read_requests needs to run on its own thread so it doesn't block this task. 
+	let ra = remote_addr.to_unique();
 	do task::spawn_sched(task::SingleThreaded) {read_requests(ra, fd, request_chan);}
 	
 	loop
@@ -92,17 +93,17 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: ~str, rem
 			either::Right(move body) =>
 			{
 				let response = sse::make_response(&iconfig);
-				let (_, body) = make_header_and_body(&response, StringBody(@body));
+				let (_, body) = make_header_and_body(&response, configuration::StringBody(@body));
 				write_response(sock, ~"", body);
 			}
 		}
 	}
 }
 
-priv fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<option::Option<HttpRequest>>)
+priv fn read_requests(remote_addr: &str, fd: libc::c_int, poke: comm::Chan<option::Option<http_parser::HttpRequest>>)
 {
-	let sock = @socket::socket_handle(fd);		// socket::socket_handle(fd);
-	let parse = make_parser();
+	let sock = @socket::socket::socket_handle(fd);		// socket::socket_handle(fd);
+	let parse = http_parser::make_parser();
 	loop
 	{
 		let mut ok = false;
@@ -118,7 +119,7 @@ priv fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<optio
 						let body = read_body(sock, request.headers.get(~"content-length"));
 						if str::is_not_empty(body)
 						{
-							comm::send(poke, option::Some(HttpRequest {body: body, ..*request}));
+							comm::send(poke, option::Some(http_parser::HttpRequest {body: body, ..*request}));
 							ok = true;
 						}
 					}
@@ -152,19 +153,19 @@ priv fn read_requests(remote_addr: ~str, fd: libc::c_int, poke: comm::Chan<optio
 // neck we could do chunked reads, but we'd need to take care to properly
 // handle multi-byte utf-8 characters and the split between headers and
 // the body.
-priv fn read_headers(remote_addr: ~str, sock: @socket::socket_handle) -> ~str unsafe
+priv fn read_headers(remote_addr: &str, sock: @socket::socket::socket_handle) -> ~str unsafe
 {
 	let mut buffer = ~[];
 	
 	while !found_headers(buffer) 
 	{
-		match socket::recv(sock, 1u)			// TODO: need a timeout
+		match socket::socket::recv(sock, 1u)			// TODO: need a timeout
 		{
 			result::Ok(ref result) =>
 			{
 				if result.bytes > 0
 				{
-					vec::push(buffer, result.buffer[0]);
+					vec::push(&mut buffer, result.buffer[0]);
 				}
 				else
 				{
@@ -179,12 +180,12 @@ priv fn read_headers(remote_addr: ~str, sock: @socket::socket_handle) -> ~str un
 			}
 		}
 	}
-	vec::push(buffer, 0);		// must be null terminated
+	vec::push(&mut buffer, 0);		// must be null terminated
 	
 	if str::is_utf8(buffer)
 	{
 		let mut headers = str::raw::from_buf(vec::raw::to_ptr(buffer));
-		str::raw::set_len(headers, vec::len(buffer));		// push adds garbage after the end of the actual elements (i.e. the capacity part)
+		str::raw::set_len(&mut headers, vec::len(buffer));		// push adds garbage after the end of the actual elements (i.e. the capacity part)
 		debug!("headers: %s", headers);
 		headers
 	}
@@ -195,7 +196,7 @@ priv fn read_headers(remote_addr: ~str, sock: @socket::socket_handle) -> ~str un
 	}
 }
 
-priv fn found_headers(buffer: ~[u8]) -> bool
+priv fn found_headers(buffer: &[u8]) -> bool
 {
 	if vec::len(buffer) < 4u
 	{
@@ -208,16 +209,16 @@ priv fn found_headers(buffer: ~[u8]) -> bool
 	}
 }
 
-priv fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str unsafe
+priv fn read_body(sock: @socket::socket::socket_handle, content_length: ~str) -> ~str unsafe
 {
-	let total_len = option::get(uint::from_str(content_length));
+	let total_len = option::get(&uint::from_str(content_length));
 	
 	let mut buffer = ~[];
-	vec::reserve(buffer, total_len);
+	vec::reserve(&mut buffer, total_len);
 	
 	while vec::len(buffer) < total_len 
 	{
-		match socket::recv(sock, total_len - vec::len(buffer))			// TODO: need a timeout
+		match socket::socket::recv(sock, total_len - vec::len(buffer))			// TODO: need a timeout
 		{
 			result::Ok(ref result) =>
 			{
@@ -226,7 +227,7 @@ priv fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str un
 					let mut i = 0u;
 					while i < result.bytes
 					{
-						vec::push(buffer, result.buffer[i]);
+						vec::push(&mut buffer, result.buffer[i]);
 						i += 1u;
 					}
 				}
@@ -243,7 +244,7 @@ priv fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str un
 			}
 		}
 	}
-	vec::push(buffer, 0);		// must be null terminated
+	vec::push(&mut buffer, 0);		// must be null terminated
 	
 	if str::is_utf8(buffer)
 	{
@@ -260,28 +261,28 @@ priv fn read_body(sock: @socket::socket_handle, content_length: ~str) -> ~str un
 
 // TODO: check connection: keep-alive
 // TODO: presumbably when we switch to a better socket library we'll be able to handle errors here...
-priv fn write_response(sock: @socket::socket_handle, header: ~str, body: Body) unsafe
+priv fn write_response(sock: @socket::socket::socket_handle, header: ~str, body: configuration::Body) unsafe
 {
-	fn write_body(sock: @socket::socket_handle, body: &Body) unsafe
+	fn write_body(sock: @socket::socket::socket_handle, body: &configuration::Body) unsafe
 	{
 		match *body
 		{
-			StringBody(text) =>
+			configuration::StringBody(text) =>
 			{
-				do str::as_buf(*text) |buffer, _len| 	{socket::send_buf(sock, buffer, text.len())};
+				do str::as_buf(*text) |buffer, _len| 	{socket::socket::send_buf(sock, buffer, text.len())};
 			}
-			BinaryBody(binary) =>
+			configuration::BinaryBody(binary) =>
 			{
-				socket::send_buf(sock, vec::raw::to_ptr(*binary), binary.len());
+				socket::socket::send_buf(sock, vec::raw::to_ptr(*binary), binary.len());
 			}
-			CompoundBody(parts) =>
+			configuration::CompoundBody(parts) =>
 			{
 				for parts.each |part| {write_body(sock, *part)};
 			}
 		}
 	}
 	
-	do str::as_buf(header) |buffer, _len| {socket::send_buf(sock, buffer, header.len())};
+	do str::as_buf(header) |buffer, _len| {socket::socket::send_buf(sock, buffer, header.len())};
 	write_body(sock, &body);
 }
 
@@ -291,7 +292,7 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 	
 	if vec::is_empty(config.hosts)
 	{
-		vec::push(errors, ~"Hosts is empty.");
+		vec::push(&mut errors, ~"Hosts is empty.");
 	}
 	
 	for vec::each(config.hosts)
@@ -299,27 +300,27 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 	{
 		if str::is_empty(*host)
 		{
-			vec::push(errors, ~"Host is empty.");
+			vec::push(&mut errors, ~"Host is empty.");
 		}
 	};
 	
 	if config.port < 1024_u16 && config.port != 80_u16
 	{
-		vec::push(errors, ~"Port should be 80 or 1024 or above.");
+		vec::push(&mut errors, ~"Port should be 80 or 1024 or above.");
 	}
 	
 	if str::is_empty(config.server_info)
 	{
-		vec::push(errors, ~"server_info is empty.");
+		vec::push(&mut errors, ~"server_info is empty.");
 	}
 	
 	if str::is_empty(config.resources_root.to_str())
 	{
-		vec::push(errors, ~"resources_root is empty.");
+		vec::push(&mut errors, ~"resources_root is empty.");
 	}
 	else if !os::path_is_dir(&config.resources_root)
 	{
-		vec::push(errors, ~"resources_root is not a directory.");
+		vec::push(&mut errors, ~"resources_root is not a directory.");
 	}
 	
 	let mut names = ~[];
@@ -329,17 +330,17 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 		let path = config.resources_root.push(*name);
 		if !os::path_exists(&path)
 		{
-			vec::push(names, copy *name);
+			vec::push(&mut names, copy *name);
 		}
 	};
 	if vec::is_not_empty(names)
 	{
-		vec::push(errors, ~"Missing required files: " + str::connect(names, ~", "));
+		vec::push(&mut errors, ~"Missing required files: " + str::connect(names, ~", "));
 	}
 	
 	if str::is_empty(config.read_error)
 	{
-		vec::push(errors, ~"read_error is empty.");
+		vec::push(&mut errors, ~"read_error is empty.");
 	}
 	
 	let mut missing_routes = ~[];
@@ -349,25 +350,25 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 	{
 		if !config.views_table.contains_key(@copy entry.route)
 		{
-			vec::push(missing_routes, copy entry.route);
+			vec::push(&mut missing_routes, copy entry.route);
 		}
-		vec::push(routes, copy entry.route);
+		vec::push(&mut routes, copy entry.route);
 	};
 	if vec::is_not_empty(missing_routes)
 	{
 		pure fn le(a: &~str, b: &~str) -> bool {*a <= *b}
 		let missing_routes = std::sort::merge_sort(le, missing_routes);		// order depends on hash, but for unit tests we want to use something more consistent
 		
-		vec::push(errors, fmt!("No views for the following routes: %s", str::connect(missing_routes, ~", ")));
+		vec::push(&mut errors, fmt!("No views for the following routes: %s", str::connect(missing_routes, ~", ")));
 	}
 	
 	let mut missing_views = ~[];
 	for config.views_table.each_key()
 	|route|
 	{
-		if !vec::contains(routes, *route)
+		if !vec::contains(routes, route)
 		{
-			vec::push(missing_views, copy *route);
+			vec::push(&mut missing_views, copy *route);
 		}
 	};
 	if vec::is_not_empty(missing_views)
@@ -375,31 +376,31 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 		pure fn le(a: &~str, b: &~str) -> bool {*a <= *b}
 		let missing_views = std::sort::merge_sort(le, missing_views);
 		
-		vec::push(errors, fmt!("No routes for the following views: %s", str::connect(missing_views, ~", ")));
+		vec::push(&mut errors, fmt!("No routes for the following views: %s", str::connect(missing_views, ~", ")));
 	}
 	
 	return str::connect(errors, ~" ");
 }
 
-pub fn to_route(&&input: (~str, ~str, ~str)) -> Route
+pub fn to_route(input: &(~str, ~str, ~str)) -> configuration::Route
 {
-	match input
+	match *input
 	{
 		(ref method, copy template_str, ref route) =>
 		{
 			let i = str::find_char(template_str, '<');
-			let (template, mime_type) = if option::is_some(i)
+			let (template, mime_type) = if option::is_some(&i)
 				{
-					let j = str::find_char_from(template_str, '>', option::get(i)+1u);
-					assert option::is_some(j);
-					(str::slice(template_str, 0u, option::get(i)), str::slice(template_str, option::get(i)+1u, option::get(j)))
+					let j = str::find_char_from(template_str, '>', option::get(&i)+1u);
+					assert option::is_some(&j);
+					(str::slice(template_str, 0u, option::get(&i)), str::slice(template_str, option::get(&i)+1u, option::get(&j)))
 				}
 				else
 				{
 					(template_str, ~"text/html")
 				};
 			
-			Route {method: *method, template: uri_template::compile(template), mime_type: mime_type, route: *route}
+			configuration::Route {method: *method, template: uri_template::compile(template), mime_type: mime_type, route: *route}
 		}
 	}
 }
@@ -407,16 +408,16 @@ pub fn to_route(&&input: (~str, ~str, ~str)) -> Route
 #[test]
 fn routes_must_have_views()
 {
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
 		routes: ~[(~"GET", ~"/", ~"home"), (~"GET", ~"/hello", ~"greeting"), (~"GET", ~"/goodbye", ~"farewell")],
-		views: ~[(~"home",  missing_view)],
-		..initialize_config()};
+		views: ~[(~"home",  configuration::missing_view)],
+		..configuration::initialize_config()};
 		
 	let sse_port = comm::Port();
-	let sse_chan = comm::Chan(sse_port);
+	let sse_chan = comm::Chan(&sse_port);
 	let iconfig = config_to_conn(&config, sse_chan);
 	
 	assert validate_config(&iconfig) == ~"No views for the following routes: farewell, greeting";
@@ -425,16 +426,16 @@ fn routes_must_have_views()
 #[test]
 fn views_must_have_routes()
 {
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
 		routes: ~[(~"GET", ~"/", ~"home")],
-		views: ~[(~"home",  missing_view), (~"greeting",  missing_view), (~"goodbye",  missing_view)],
-		..initialize_config()};
+		views: ~[(~"home",  configuration::missing_view), (~"greeting",  configuration::missing_view), (~"goodbye",  configuration::missing_view)],
+		..configuration::initialize_config()};
 		
 	let sse_port = comm::Port();
-	let sse_chan = comm::Chan(sse_port);
+	let sse_chan = comm::Chan(&sse_port);
 	let iconfig = config_to_conn(&config, sse_chan);
 	
 	assert validate_config(&iconfig) == ~"No routes for the following views: goodbye, greeting";
@@ -443,16 +444,16 @@ fn views_must_have_routes()
 #[test]
 fn root_must_have_required_files()
 {
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"/tmp"),
 		routes: ~[(~"GET", ~"/", ~"home")],
-		views: ~[(~"home",  missing_view)],
-		..initialize_config()};
+		views: ~[(~"home",  configuration::missing_view)],
+		..configuration::initialize_config()};
 		
 	let sse_port = comm::Port();
-	let sse_chan = comm::Chan(sse_port);
+	let sse_chan = comm::Chan(&sse_port);
 	let iconfig = config_to_conn(&config, sse_chan);
 	
 	assert validate_config(&iconfig) == ~"Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";

@@ -3,26 +3,26 @@
 // http://dev.w3.org/html5/eventsource
 use std::map::*;
 use path::{Path};
-use mustache::*;
+//use mustache::*;
 
 /// Called by the server to spin up a task for an sse session. Returns a
 /// channel that the server uses to communicate with the task.
 ///
 /// The hashmap contains the config settings. The PushChan allows the
 /// task to push data to the client.
-type OpenSse = fn~ (config: &connection::ConnConfig, request: &configuration::Request, channel: PushChan) -> ControlChan;
+pub type OpenSse = fn~ (config: &connection::ConnConfig, request: &configuration::Request, channel: PushChan) -> ControlChan;
 
 /// The channel used by server tasks to send data to a client.
 ///
 /// In the simplest case the data would contain a single line with the format: 
 /// "data: arbitrary text\n". For more details see [event stream](http://dev.w3.org/html5/eventsource/#event-stream-interpretation).
-type PushChan = comm::Chan<~str>;
+pub type PushChan = comm::Chan<~str>;
 
 /// The port sse tasks use to respond to events from the server.
-type ControlPort = comm::Port<ControlEvent>;
+pub type ControlPort = comm::Port<ControlEvent>;
 
 /// The channel used by the server to communicate with sse tasks.
-type ControlChan = comm::Chan<ControlEvent>;
+pub type ControlChan = comm::Chan<ControlEvent>;
 
 /// The data sent by the ControlChan to a task.
 ///
@@ -31,14 +31,14 @@ type ControlChan = comm::Chan<ControlEvent>;
 ///
 /// CloseEvent will be sent if the tcp connection is dropped or the client
 /// closes the EventSource.
-enum ControlEvent
+pub enum ControlEvent
 {
 	RefreshEvent,
 	CloseEvent,
 }
 
 // This is invoked when the client sends a GET on behalf of an event source.
-fn process_sse(config: &connection::ConnConfig, request: &configuration::Request) -> (configuration::Response, configuration::Body)
+pub fn process_sse(config: &connection::ConnConfig, request: &configuration::Request) -> (configuration::Response, configuration::Body)
 {
 	let mut code = ~"200";
 	let mut mesg = ~"OK";
@@ -68,7 +68,7 @@ fn process_sse(config: &connection::ConnConfig, request: &configuration::Request
 }
 
 // TODO: Chrome, at least, doesn't seem to close EventSources so we need to time these out.
-fn OpenSse(config: &connection::ConnConfig, request: &configuration::Request, push_data: PushChan) -> bool
+pub fn OpenSse(config: &connection::ConnConfig, request: &configuration::Request, push_data: PushChan) -> bool
 {
 	match config.sse_openers.find(@copy request.path)
 	{
@@ -87,7 +87,7 @@ fn OpenSse(config: &connection::ConnConfig, request: &configuration::Request, pu
 	}
 }
 
-fn close_sses(config: &connection::ConnConfig)
+pub fn close_sses(config: &connection::ConnConfig)
 {
 	info!("closing all sse");
 	for config.sse_tasks.each_value
@@ -97,7 +97,7 @@ fn close_sses(config: &connection::ConnConfig)
 	};
 }
 
-fn make_response(config: &connection::ConnConfig) -> configuration::Response
+pub fn make_response(config: &connection::ConnConfig) -> configuration::Response
 {
 	let headers = utils::to_boxed_str_hash(~[
 		(~"Cache-Control", ~"no-cache"),

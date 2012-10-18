@@ -1,9 +1,9 @@
 //! Simple immutable and sendable multimap.
 use mod core::cmp;
 
-type IMap<K: Copy, V: Copy> = ~[(K, V)];
+pub type IMap<K: Copy, V: Copy> = ~[(K, V)];
 
-trait ImmutableMap<K: Copy, V: Copy>
+pub trait ImmutableMap<K: Copy, V: Copy>
 {
 	pure fn size() -> uint;
 	pure fn contains_key(key: K) -> bool;
@@ -19,7 +19,7 @@ trait ImmutableMap<K: Copy, V: Copy>
 // But note that this is a multimap which hashmap doesn't currently support.
 // Would be faster if we used a binary search, but that won't matter
 // for our use cases.
-impl<K: Copy core::cmp::Eq, V: Copy> IMap<K, V> : ImmutableMap<K, V>
+pub impl<K: Copy core::cmp::Eq, V: Copy> IMap<K, V> : ImmutableMap<K, V>
 {
 	pure fn size() -> uint
 	{

@@ -1,7 +1,7 @@
 use std::map::*;
 
 // Components of a template path.
-enum Component
+pub enum Component
 {
 	Literal(~str),		// match iff the component is str
 	Variable(~str),		// matches an arbitrary component, str will be the key name
@@ -9,16 +9,16 @@ enum Component
 }
 
 // TODO: This is hopefully temporary: at some point rust should again be able to compare enums without assistence.
-impl Component : cmp::Eq
+pub impl Component : cmp::Eq
 {
-	pure fn eq(&&rhs: Component) -> bool
+	pure fn eq(rhs: &Component) -> bool
 	{
-		fmt!("%?", self) == fmt!("%?", rhs)
+		fmt!("%?", self) == fmt!("%?", *rhs)
 	}
 	
-	pure fn ne(&&rhs: Component) -> bool
+	pure fn ne(rhs: &Component) -> bool
 	{
-		fmt!("%?", self) != fmt!("%?", rhs)
+		fmt!("%?", self) != fmt!("%?", *rhs)
 	}
 }
 
@@ -27,20 +27,20 @@ impl Component : cmp::Eq
 // Templates look like:
 //    /blueprint/{site}/{building}		site and building match any (single) component
 //    /csv/*path						path matches zero or more components
-fn compile(template: ~str) -> ~[Component]
+pub fn compile(template: &str) -> ~[Component]
 {
 	let parts = str::split_char_nonempty(template, '/');
 	
 	let mut result = do vec::map(parts)
 	|part|
 	{
-		if str::starts_with(part, "{") && str::ends_with(part, "}")
+		if str::starts_with(*part, "{") && str::ends_with(*part, "}")
 		{
-			Variable(str::slice(part, 1u, str::len(part)-1u))
+			Variable(str::slice(*part, 1u, str::len(*part)-1u))
 		}
 		else
 		{
-			Literal(copy part)
+			Literal(part.to_unique())
 		}
 	};
 	
@@ -49,8 +49,8 @@ fn compile(template: ~str) -> ~[Component]
 		let last = 	vec::last(parts);
 		if str::starts_with(last, "*")
 		{
-			vec::pop(result);
-			vec::push(result, Trailer(str::slice(last, 1u, str::len(last))));
+			vec::pop(&mut result);
+			vec::push(&mut result, Trailer(str::slice(last, 1u, str::len(last))));
 		}
 	}
 	
@@ -61,7 +61,7 @@ fn compile(template: ~str) -> ~[Component]
 // Components should be the result of a call to compile.
 // Result will be non-empty iff all of the components in path match the specified components.
 // On matches result will have keys matching any variable names as well as a "fullpath" key matching the entire path.
-fn match_template(path: ~str, components: ~[Component]) -> HashMap<@~str, @~str>
+pub fn match_template(path: &str, components: &[Component]) -> HashMap<@~str, @~str>
 {
 	let parts = str::split_char_nonempty(path, '/');
 	
@@ -102,7 +102,7 @@ fn match_template(path: ~str, components: ~[Component]) -> HashMap<@~str, @~str>
 		return std::map::HashMap();				// not all parts were matched
 	}
 	
-	result.insert(@~"fullpath", @copy path);
+	result.insert(@~"fullpath", @path.to_unique());
 	return result;
 }
 

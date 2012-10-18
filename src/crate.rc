@@ -13,17 +13,18 @@
 #[allow(non_implicitly_copyable_typarams)];
 
 extern mod std;
-extern mod mustache (name = "mustache", vers = "0.1");
+extern mod mustache (name = "mustache", vers = "0.3pre");
 extern mod rparse (name = "rparse", vers = "0.6");
 extern mod socket (name = "socket", vers = "0.1");
 
-mod configuration; 
-mod connection;
-mod http_parser;
-mod imap;
-mod request;
-mod rwebserve;
-mod server;
-mod sse;
-mod uri_template;
-mod utils;
+// TODO: don't think that all of these should be pub
+pub mod configuration; 
+pub mod connection;
+pub mod http_parser;
+pub mod imap;
+pub mod request;
+pub mod rwebserve;
+pub mod server;
+pub mod sse;
+pub mod uri_template;
+pub mod utils;

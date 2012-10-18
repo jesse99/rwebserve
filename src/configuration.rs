@@ -1,9 +1,12 @@
 //! Types and functions used to configure rwebserve.
 use Path = path::Path;
 use std::map::*;
-use mustache::*;
-use sse::*;
+//use mustache::*;
+//use sse::*;
 use std::base64::*;
+use std::map::HashMap;
+//use std::serialization::{Serializable, Serializer};
+//use std::json::Json;
 
 /// Configuration information for the web server.
 /// 
@@ -26,7 +29,7 @@ use std::base64::*;
 /// code will be enabled (among other things this will default the Cache-Control header to "no-cache").
 /// 
 /// initialize_config can be used to initialize some of these fields. Note that this is sendable and copyable type.
-struct Config
+pub struct Config
 {
 	pub hosts: ~[~str],
 	pub port: u16,
@@ -36,7 +39,7 @@ struct Config
 	pub views: ~[(~str, ResponseHandler)],
 	pub static_handler: ResponseHandler,
 	pub is_template: IsTemplateFile,
-	pub sse: ~[(~str, OpenSse)],
+	pub sse: ~[(~str, sse::OpenSse)],
 	pub missing: ResponseHandler,
 	pub static_types: ~[(~str, ~str)],
 	pub read_error: ~str,
@@ -56,7 +59,7 @@ struct Config
 /// * params: contains entries from the query portion of the URL. Note that the keys may be duplicated.
 /// * headers: headers from the http request. Note that the names are lower cased.
 /// * body: body of the http request.
-struct Request
+pub struct Request
 {
 	pub version: ~str,
 	pub method: ~str,
@@ -81,7 +84,7 @@ struct Request
 /// 
 /// If template is not empty then body should be empty. If body is not empty then
 /// headers["Content-Type"] should usually be explicitly set.
-struct Response
+pub struct Response
 {
 	pub status: ~str,
 	pub headers: HashMap<@~str, @~str>,
@@ -97,16 +100,16 @@ struct Response
 /// The type of an HTTP body is determined by the content-type header. If it is a text mime type
 /// then the body with be some flavor of text. However for types like image/png the body will
 /// be binary data. This type allows us to avoid copying a text reply to a byte buffer.
-enum Body
+pub enum Body
 {
 	StringBody(@~str),
 	BinaryBody(@~[u8]),
 	CompoundBody(@[@Body]),		// concatenation of strings and vectors blows if they are large
 }
 
-impl Body : ToStr
+pub impl Body : ToStr
 {
-	fn to_str() -> ~str
+	pure fn to_str() -> ~str
 	{
 		match self
 		{
@@ -147,18 +150,18 @@ impl Body : ToStr
 /// * context: new entries will often be added. If template is not actually a template file empty the context.
 /// 
 /// After the function returns a base-path entry is added to the response.context with the url to the directory containing the template file.
-type ResponseHandler = fn~ (config: &connection::ConnConfig, request: &Request, response: &Response) -> Response;
+pub type ResponseHandler = fn~ (config: &connection::ConnConfig, request: &Request, response: &Response) -> Response;
 
 /// Returns true if the file at path should be treated as a mustache template.
-type IsTemplateFile = fn~ (config: &connection::ConnConfig, path: &str) -> bool;
+pub type IsTemplateFile = fn~ (config: &connection::ConnConfig, path: &str) -> bool;
 
 /// Maps a path rooted at resources_root to a resource body.
-type RsrcLoader = fn~ (path: &Path) -> result::Result<~[u8], ~str>;
+pub type RsrcLoader = fn~ (path: &Path) -> result::Result<~[u8], ~str>;
 
 /// Returns true if a path rooted at resources_root points to a file.
-type RsrcExists = fn~ (path: &Path) -> bool;
+pub type RsrcExists = fn~ (path: &Path) -> bool;
 
-struct Route
+pub struct Route
 {
 	pub method: ~str,
 	pub template: ~[uri_template::Component],
@@ -176,7 +179,7 @@ struct Route
 /// * read_error is initialized to a reasonable English language html error message.
 /// * load_rsrc: is initialized to io::read_whole_file_str.
 /// * valid_rsrc: is initialized to os::path_exists && !os::path_is_dir.
-fn initialize_config() -> Config
+pub fn initialize_config() -> Config
 {
 	Config 
 	{
@@ -229,14 +232,14 @@ fn initialize_config() -> Config
 	}
 }
 
-fn is_valid_rsrc(path: &Path) -> bool
+pub fn is_valid_rsrc(path: &Path) -> bool
 {
 	os::path_exists(path) && !os::path_is_dir(path)
 }
 
 // Default config.missing handler. Assumes that there is a "not-found.html"
 // file at the resource root.
-fn missing_view(_config: &connection::ConnConfig, _request: &Request, response: &Response) -> Response
+pub fn missing_view(_config: &connection::ConnConfig, _request: &Request, response: &Response) -> Response
 {
 	Response {template: ~"not-found.html", ..*response}
 }
@@ -248,9 +251,10 @@ fn missing_view(_config: &connection::ConnConfig, _request: &Request, response: 
 // 1) It's expected that expanding a non-template file is not going to be a performance problem.
 // 2) Using files like *.html.mustache screws up syntax highlighting in editors.
 // 3) Users can install a new is_template closure to do something different.
-fn static_view(config: &connection::ConnConfig, _request: &Request, response: &Response) -> Response
+pub fn static_view(config: &connection::ConnConfig, _request: &Request, response: &Response) -> Response
 {
-	let path = mustache::render_str(~"{{request-path}}", response.context);
+	let path = mustache::compile_str("{{request-path}}").render_data(mustache::Map(response.context));
+	//let path = mustache::render_str("{{request-path}}", response.context);
 	if config.is_template(config, path)
 	{
 		Response {body: StringBody(@~""), template: path, context: std::map::HashMap(), ..*response}
@@ -271,7 +275,7 @@ fn static_view(config: &connection::ConnConfig, _request: &Request, response: &R
 	}
 }
 
-fn is_text_file(config: &connection::ConnConfig, path: &str) -> bool
+pub fn is_text_file(config: &connection::ConnConfig, path: &str) -> bool
 {
 	match str::rfind_char(path, '.')
 	{

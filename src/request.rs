@@ -1,20 +1,21 @@
 //! Handles an incoming request from a client connection and sends a response.
 use io::WriterUtil;
 use imap::*;
-use configuration::*;
+use std::map::*;
+//use configuration::*;
 use http_parser::{HttpRequest};
 use sse::{process_sse};
-use utils::*;
+//use utils::*;
 
 // TODO:
 // include last-modified and maybe etag
-pub fn process_request(config: &connection::ConnConfig, request: &HttpRequest, local_addr: ~str, remote_addr: ~str) -> (~str, Body)
+pub fn process_request(config: &connection::ConnConfig, request: &HttpRequest, local_addr: &str, remote_addr: &str) -> (~str, configuration::Body)
 {
 	info!("Servicing %s for %s", request.method, utils::truncate_str(request.url, 80));
 	
 	let version = fmt!("%d.%d", request.major_version, request.minor_version);
 	let (path, params) = parse_url(request.url);
-	let request = Request {version: version, method: request.method, local_addr: local_addr, remote_addr: remote_addr, path: path, matches: std::map::HashMap(), params: params, headers: utils::to_boxed_str_hash(request.headers), body: request.body};
+	let request = configuration::Request {version: version, method: request.method, local_addr: local_addr.to_unique(), remote_addr: remote_addr.to_unique(), path: path, matches: std::map::HashMap(), params: params, headers: utils::to_boxed_str_hash(request.headers), body: request.body};
 	let types = if request.headers.contains_key(@~"accept") {str::split_char(*request.headers.get(@~"accept"), ',')} else {~[~"text/html"]};
 	let (response, body) = get_body(config, &request, types);
 	
@@ -25,7 +26,7 @@ pub fn process_request(config: &connection::ConnConfig, request: &HttpRequest, l
 	(header, body)
 }
 
-priv fn parse_url(url: ~str) -> (~str, imap::IMap<@~str, @~str>)
+priv fn parse_url(url: &str) -> (~str, imap::IMap<@~str, @~str>)
 {
 	match str::find_char(url, '?')
 	{
@@ -37,7 +38,7 @@ priv fn parse_url(url: ~str) -> (~str, imap::IMap<@~str, @~str>)
 			let params = do vec::map(parts)
 			|p|
 			{
-				match str::find_char(p, '=')
+				match str::find_char(*p, '=')
 				{
 					option::Some(i) =>
 					{
@@ -45,12 +46,12 @@ priv fn parse_url(url: ~str) -> (~str, imap::IMap<@~str, @~str>)
 					}
 					option::None =>
 					{
-						~[@copy p]		// bad field
+						~[@p.to_unique()]		// bad field
 					}
 				}
 			};
 			
-			if do vec::all(params) |p| {vec::len(p) == 2}
+			if do vec::all(params) |p| {vec::len(*p) == 2}
 			{
 				(str::slice(url, 0, i), do vec::map(params) |p| {(p[0], p[1])})
 			}
@@ -59,12 +60,12 @@ priv fn parse_url(url: ~str) -> (~str, imap::IMap<@~str, @~str>)
 				// It's not a valid query string so we'll just let the server handle it.
 				// Presumbably it won't match any routes so we'll get an error then.
 				error!("invalid query string");
-				(copy url, ~[])
+				(url.to_unique(), ~[])
 			}
 		}
 		option::None =>
 		{
-			(copy url, ~[])
+			(url.to_unique(), ~[])
 		}
 	}
 }
@@ -88,29 +89,29 @@ pub fn make_initial_response(config: &connection::ConnConfig, status_code: ~str,
 	context.insert(@~"status-mesg", mustache::Str(@copy status_mesg));
 	context.insert(@~"request-version", mustache::Str(@copy request.version));
 	
-	Response {status: status_code + ~" " + status_mesg, headers: headers, body: StringBody(@~""), template: ~"", context: context}
+	configuration::Response {status: status_code + ~" " + status_mesg, headers: headers, body: configuration::StringBody(@~""), template: ~"", context: context}
 }
 
-priv fn body_len(body: &Body) -> uint
+priv fn body_len(body: &configuration::Body) -> uint
 {
 	match *body
 	{
-		StringBody(text) =>
+		configuration::StringBody(text) =>
 		{
 			text.len()
 		}
-		BinaryBody(binary) =>
+		configuration::BinaryBody(binary) =>
 		{
 			binary.len()
 		}
-		CompoundBody(parts) =>
+		configuration::CompoundBody(parts) =>
 		{
-			do parts.foldl(0) |result, part| {result + body_len(part)}
+			do parts.foldl(0) |result, part| {*result + body_len(*part)}
 		}
 	}
 }
 
-pub fn make_header_and_body(response: &Response, body: Body) -> (~str, Body)
+pub fn make_header_and_body(response: &configuration::Response, body: configuration::Body) -> (~str, configuration::Body)
 {
 	let mut headers = ~"";
 	let mut has_content_len = false;
@@ -151,7 +152,7 @@ pub fn make_header_and_body(response: &Response, body: Body) -> (~str, Body)
 		fmt!("HTTP/1.1 %s\r\n%s\r\n", response.status, headers),
 		if is_chunked
 		{
-			CompoundBody(@[@StringBody(@fmt!("%X\r\n", body_len(&body))), @body, @StringBody(@~"\r\n")])
+			configuration::CompoundBody(@[@configuration::StringBody(@fmt!("%X\r\n", body_len(&body))), @body, @configuration::StringBody(@~"\r\n")])
 		}
 		else
 		{
@@ -160,9 +161,9 @@ pub fn make_header_and_body(response: &Response, body: Body) -> (~str, Body)
 	)
 }
 
-priv fn get_body(config: &connection::ConnConfig, request: &Request, types: ~[~str]) -> (Response, Body)
+priv fn get_body(config: &connection::ConnConfig, request: &configuration::Request, types: ~[~str]) -> (configuration::Response, configuration::Body)
 {
-	if vec::contains(types, ~"text/event-stream") 
+	if vec::contains(types, &~"text/event-stream") 
 	{
 		process_sse(config, request)
 	}
@@ -171,7 +172,7 @@ priv fn get_body(config: &connection::ConnConfig, request: &Request, types: ~[~s
 		let (status_code, status_mesg, mime_type, handler, matches) = find_handler(config, request.method, request.path, types, request.version);
 		
 		let response = make_initial_response(config, status_code, status_mesg, mime_type, request);
-		let response = handler(config, &Request {matches: matches, ..*request}, &response);
+		let response = handler(config, &configuration::Request {matches: matches, ..*request}, &response);
 		
 		if str::is_not_empty(response.template.to_str())
 		{
@@ -185,7 +186,7 @@ priv fn get_body(config: &connection::ConnConfig, request: &Request, types: ~[~s
 	}
 }
 
-priv fn find_handler(config: &connection::ConnConfig, method: ~str, request_path: ~str, types: ~[~str], version: ~str) -> (~str, ~str, ~str, ResponseHandler, HashMap<@~str, @~str>)
+priv fn find_handler(config: &connection::ConnConfig, method: &str, request_path: &str, types: &[~str], version: &str) -> (~str, ~str, ~str, configuration::ResponseHandler, HashMap<@~str, @~str>)
 {
 	let mut handler = option::None;
 	let mut status_code = ~"200";
@@ -204,7 +205,7 @@ priv fn find_handler(config: &connection::ConnConfig, method: ~str, request_path
 	}
 	
 	// See if the url matches a file under the resource root (i.e. the url can't have too many .. components).
-	if option::is_none(handler)
+	if option::is_none(&handler)
 	{
 		let path = utils::url_to_path(&config.resources_root, request_path);
 		let path = path.normalize();
@@ -213,7 +214,7 @@ priv fn find_handler(config: &connection::ConnConfig, method: ~str, request_path
 			if config.valid_rsrc(&path)
 			{
 				let mime_type = path_to_type(config, request_path);
-				if vec::contains(types, ~"*/*") || vec::contains(types, mime_type)
+				if vec::contains(types, &~"*/*") || vec::contains(types, &mime_type)
 				{
 					result_type = mime_type + ~"; charset=UTF-8";
 					handler = option::Some(copy config.static_handler);
@@ -231,17 +232,17 @@ priv fn find_handler(config: &connection::ConnConfig, method: ~str, request_path
 	}
 	
 	// Then look for the first matching route.
-	if option::is_none(handler)
+	if option::is_none(&handler)
 	{
 		for vec::each(config.route_list)
 		|entry|
 		{
-			if entry.method == method
+			if str::eq_slice(entry.method, method)
 			{
 				let m = uri_template::match_template(request_path, entry.template);
 				if m.size() > 0u
 				{
-					if vec::contains(types, entry.mime_type)
+					if vec::contains(types, &entry.mime_type)
 					{
 						handler = option::Some(config.views_table.get(@copy entry.route));
 						result_type = entry.mime_type + ~"; charset=UTF-8";
@@ -258,7 +259,7 @@ priv fn find_handler(config: &connection::ConnConfig, method: ~str, request_path
 	}
 	
 	// Otherwise use the missing handler.
-	if option::is_none(handler)
+	if option::is_none(&handler)
 	{
 		status_code = ~"404";
 		status_mesg = ~"Not Found";
@@ -266,13 +267,13 @@ priv fn find_handler(config: &connection::ConnConfig, method: ~str, request_path
 		info!("responding with %s %s", status_code, status_mesg);
 	}
 	
-	return (status_code, status_mesg, result_type, option::get(handler), matches);
+	return (status_code, status_mesg, result_type, option::get(&handler), matches);
 }
 
 priv fn load_template(config: &connection::ConnConfig, path: &Path) -> result::Result<@~str, ~str>
 {
 	// {{ should be followed by }} (rust-mustache hangs if this is not the case).
-	fn match_curly_braces(text: ~str) -> bool
+	fn match_curly_braces(text: &str) -> bool
 	{
 		let mut index = 0u;
 		
@@ -318,7 +319,7 @@ priv fn load_template(config: &connection::ConnConfig, path: &Path) -> result::R
 	}
 }
 
-priv fn process_template(config: &connection::ConnConfig, response: &Response, request: &Request) -> (Response, Body)
+priv fn process_template(config: &connection::ConnConfig, response: &configuration::Response, request: &configuration::Request) -> (configuration::Response, configuration::Body)
 {
 	let path = utils::url_to_path(&config.resources_root, response.template);
 	let (response, body) =
@@ -327,14 +328,14 @@ priv fn process_template(config: &connection::ConnConfig, response: &Response, r
 			result::Ok(v) =>
 			{
 				// We found a legit template file.
-				(Response {status: response.status, ..*response}, v)		// hacky way to return a new Response without a copy
+				(configuration::Response {status: response.status, ..*response}, v)		// hacky way to return a new Response without a copy
 			}
 			result::Err(ref mesg) =>
 			{
 				// We failed to load the template so use the hard-coded config.read_error body.
 				let context = std::map::HashMap();
 				context.insert(@~"request-path", mustache::Str(@copy request.path));
-				let body = mustache::render_str(config.read_error, context);
+				let body = mustache::compile_str(config.read_error).render_data(mustache::Map(context));
 				
 				if config.server_info != ~"unit test"
 				{
@@ -352,12 +353,12 @@ priv fn process_template(config: &connection::ConnConfig, response: &Response, r
 		let base_url = fmt!("http://%s:%?/%s/", request.local_addr, config.port, base_dir);
 		response.context.insert(@~"base-path", mustache::Str(@base_url));
 		
-		let body = mustache::render_str(*body, response.context);
-		(response, StringBody(@body))
+		let body = mustache::compile_str(*body).render_data(mustache::Map(response.context));
+		(response, configuration::StringBody(@body))
 	}
 	else
 	{
-		(response, StringBody(body))
+		(response, configuration::StringBody(body))
 	}
 }
 
@@ -370,7 +371,7 @@ priv fn url_dirname(path: &str) -> ~str
 	}
 }
 
-priv fn path_to_type(config: &connection::ConnConfig, path: ~str) -> ~str
+priv fn path_to_type(config: &connection::ConnConfig, path: &str) -> ~str
 {
 	let p: path::Path = path::from_str(path);
 	let extension: Option<~str> = p.filetype();
@@ -399,9 +400,9 @@ priv fn path_to_type(config: &connection::ConnConfig, path: ~str) -> ~str
 }
 
 #[cfg(test)]
-fn test_view(_config: &connection::ConnConfig, _request: &Request, response: &Response) -> Response
+fn test_view(_config: &connection::ConnConfig, _request: &configuration::Request, response: &configuration::Response) -> configuration::Response
 {
-	Response {template: ~"test.html", ..*response}
+	configuration::Response {template: ~"test.html", ..*response}
 }
 
 #[cfg(test)]
@@ -432,17 +433,17 @@ fn make_request(url: ~str, mime_type: ~str) -> HttpRequest
 #[test]
 fn html_route()
 {
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
 		routes: ~[(~"GET", ~"/foo/bar", ~"foo")],
 		views: ~[(~"foo",  test_view)],
 		load_rsrc: null_loader
-		, .. initialize_config()};
+		, .. configuration::initialize_config()};
 		
 	let eport = comm::Port();
-	let ech = comm::Chan(eport);
+	let ech = comm::Chan(&eport);
 	let iconfig = connection::config_to_conn(&config, ech);
 	
 	let request = make_request(~"/foo/bar", ~"text/html");
@@ -454,17 +455,17 @@ fn html_route()
 #[test]
 fn route_with_bad_type()
 {
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
 		routes: ~[(~"GET", ~"/foo/bar", ~"foo")],
 		views: ~[(~"foo",  test_view)],
 		load_rsrc: null_loader
-		, .. initialize_config()};
+		, .. configuration::initialize_config()};
 		
 	let eport = comm::Port();
-	let ech = comm::Chan(eport);
+	let ech = comm::Chan(&eport);
 	let iconfig = connection::config_to_conn(&config, ech);
 	
 	let request = make_request(~"/foo/bar", ~"text/zzz");
@@ -478,17 +479,17 @@ fn route_with_bad_type()
 #[test]
 fn non_html_route()
 {
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
 		routes: ~[(~"GET", ~"/foo/bar<text/csv>", ~"foo")],
 		views: ~[(~"foo",  test_view)],
 		load_rsrc: null_loader
-		, ..initialize_config()};
+		, ..configuration::initialize_config()};
 		
 	let eport = comm::Port();
-	let ech = comm::Chan(eport);
+	let ech = comm::Chan(&eport);
 	let iconfig = connection::config_to_conn(&config, ech);
 	
 	let request = make_request(~"/foo/bar", ~"text/csv");
@@ -500,7 +501,7 @@ fn non_html_route()
 #[test]
 fn static_route()
 {
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
@@ -508,10 +509,10 @@ fn static_route()
 		views: ~[(~"foo",  test_view)],
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {true}
-		, ..initialize_config()};
+		, ..configuration::initialize_config()};
 		
 	let eport = comm::Port();
-	let ech = comm::Chan(eport);
+	let ech = comm::Chan(&eport);
 	let iconfig = connection::config_to_conn(&config, ech);
 	
 	let request = make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg");
@@ -520,7 +521,7 @@ fn static_route()
 	assert header.contains("Content-Type: image/jpeg");
 	match body
 	{
-		BinaryBody(binary) => assert utils::check_strs(str::from_bytes(*binary), ~"server/html/foo/baz.jpg contents"),
+		configuration::BinaryBody(binary) => assert utils::check_strs(str::from_bytes(*binary), ~"server/html/foo/baz.jpg contents"),
 		_ => fail fmt!("Expected binary body but found %?", body),
 	}
 }
@@ -528,7 +529,7 @@ fn static_route()
 #[test]
 fn static_with_bad_type()
 {
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
@@ -536,10 +537,10 @@ fn static_with_bad_type()
 		views: ~[(~"foo",  test_view)],
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {true}
-		, ..initialize_config()};
+		, ..configuration::initialize_config()};
 		
 	let eport = comm::Port();
-	let ech = comm::Chan(eport);
+	let ech = comm::Chan(&eport);
 	let iconfig = connection::config_to_conn(&config, ech);
 	
 	let request = make_request(~"/foo/baz.jpg", ~"text/zzz");
@@ -552,7 +553,7 @@ fn static_with_bad_type()
 #[test]
 fn bad_url()
 {
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
@@ -560,10 +561,10 @@ fn bad_url()
 		views: ~[(~"foo",  test_view)],
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {false}
-		, .. initialize_config()};
+		, .. configuration::initialize_config()};
 		
 	let eport = comm::Port();
-	let ech = comm::Chan(eport);
+	let ech = comm::Chan(&eport);
 	let iconfig = connection::config_to_conn(&config, ech);
 	
 	let request = make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg");
@@ -577,7 +578,7 @@ fn bad_url()
 #[test]
 fn path_outside_root()
 {
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
@@ -585,10 +586,10 @@ fn path_outside_root()
 		views: ~[(~"foo",  test_view)],
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {true}
-		, .. initialize_config()};
+		, .. configuration::initialize_config()};
 		
 	let eport = comm::Port();
-	let ech = comm::Chan(eport);
+	let ech = comm::Chan(&eport);
 	let iconfig = connection::config_to_conn(&config, ech);
 	
 	let request = make_request(~"/foo/../../baz.jpg", ~"text/html,image/jpeg");
@@ -602,7 +603,7 @@ fn path_outside_root()
 #[test]
 fn read_error()
 {
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
@@ -610,10 +611,10 @@ fn read_error()
 		views: ~[(~"foo",  test_view)],
 		load_rsrc: err_loader,
 		valid_rsrc: |_path| {true}
-		, .. initialize_config()};
+		, .. configuration::initialize_config()};
 		
 	let eport = comm::Port();
-	let ech = comm::Chan(eport);
+	let ech = comm::Chan(&eport);
 	let iconfig = connection::config_to_conn(&config, ech);
 	
 	let request = make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg");
@@ -627,7 +628,7 @@ fn read_error()
 #[test]
 fn bad_version()
 {
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
@@ -635,10 +636,10 @@ fn bad_version()
 		views: ~[(~"foo",  test_view)],
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {true}
-		, .. initialize_config()};
+		, .. configuration::initialize_config()};
 		
 	let eport = comm::Port();
-	let ech = comm::Chan(eport);
+	let ech = comm::Chan(&eport);
 	let iconfig = connection::config_to_conn(&config, ech);
 	
 	let request = HttpRequest {major_version: 100 , .. make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg")};
@@ -657,7 +658,7 @@ fn bad_template()
 		result::Ok(str::to_bytes(~"unbalanced {{curly}} {{braces}"))
 	}
 	
-	let config = Config {
+	let config = configuration::Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
@@ -666,10 +667,10 @@ fn bad_template()
 		load_rsrc: bad_loader,
 		valid_rsrc: |_path| {true},
 		settings: ~[(~"debug", ~"true")],
-		..initialize_config()};
+		..configuration::initialize_config()};
 		
 	let eport = comm::Port();
-	let ech = comm::Chan(eport);
+	let ech = comm::Chan(&eport);
 	let iconfig = connection::config_to_conn(&config, ech);
 	
 	match load_template(&iconfig, &path::from_str(~"blah.html"))

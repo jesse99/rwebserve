@@ -5,7 +5,7 @@ use path::Path;
 
 // The url should be the path component of an URL. It will usually be
 // an absolute path which is actually relative to root.
-fn url_to_path(root: &Path, url: &str) -> Path
+pub fn url_to_path(root: &Path, url: &str) -> Path
 {
 	let path = path::from_str(
 		if url.is_not_empty() && url.char_at(0) == '/'
@@ -20,7 +20,7 @@ fn url_to_path(root: &Path, url: &str) -> Path
 	root.push_rel(&path)
 }
 
-fn boxed_hash_from_strs<V: Copy>(items: &[(~str, V)]) -> HashMap<@~str, V>
+pub fn boxed_hash_from_strs<V: Copy>(items: &[(~str, V)]) -> HashMap<@~str, V>
 {
 	let table = HashMap();
 	for items.each
@@ -31,7 +31,7 @@ fn boxed_hash_from_strs<V: Copy>(items: &[(~str, V)]) -> HashMap<@~str, V>
 	table
 }
 
-fn to_boxed_str_hash(items: &[(~str, ~str)]) -> HashMap<@~str, @~str>
+pub fn to_boxed_str_hash(items: &[(~str, ~str)]) -> HashMap<@~str, @~str>
 {
 	let table = HashMap();
 	for items.each
@@ -42,7 +42,7 @@ fn to_boxed_str_hash(items: &[(~str, ~str)]) -> HashMap<@~str, @~str>
 	table
 }
 
-fn dump_string(title: ~str, text: ~str)
+pub fn dump_string(title: ~str, text: ~str)
 {
 	io::println(fmt!("%s has %? bytes:", title, str::len(text)));
 	let mut i = 0u;
@@ -90,7 +90,7 @@ fn dump_string(title: ~str, text: ~str)
 	}
 }
 
-fn truncate_str(s: ~str, max_chars: uint) -> ~str
+pub fn truncate_str(s: &str, max_chars: uint) -> ~str
 {
 	if s.len() > max_chars
 	{
@@ -98,12 +98,12 @@ fn truncate_str(s: ~str, max_chars: uint) -> ~str
 	}
 	else
 	{
-		copy s
+		s.to_unique()
 	}
 }
 
 #[cfg(test)]
-fn check_strs(actual: ~str, expected: ~str) -> bool
+pub fn check_strs(actual: &str, expected: &str) -> bool
 {
 	if actual != expected
 	{
@@ -114,7 +114,7 @@ fn check_strs(actual: ~str, expected: ~str) -> bool
 }
 
 #[cfg(test)]
-fn check_vectors<T: cmp::Eq>(actual: ~[T], expected: ~[T]) -> bool
+pub fn check_vectors<T: cmp::Eq>(actual: &[T], expected: &[T]) -> bool
 {
 	if actual != expected
 	{

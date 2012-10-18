@@ -13,7 +13,7 @@
 #[allow(implicit_copies)];
 
 extern mod std;
-extern mod mustache (name = "mustache", vers = "0.1");
+extern mod mustache (name = "mustache", vers = "0.3pre");
 extern mod rwebserve (name = "rwebserve", vers = "0.2");
 
 mod main;

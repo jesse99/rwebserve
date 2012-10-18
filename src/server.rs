@@ -1,14 +1,14 @@
 // http://www.w3.org/Protocols/rfc2616/rfc2616.html
-use socket::*;
+//use socket::*;
 use connection::{handle_connection};
 
 /// Startup the server.
 /// 
 /// Currently this will run until a client does a GET on '/shutdown' in which case exit is called.
-fn start(config: &configuration::Config)
+pub fn start(config: &configuration::Config)
 {
 	let port = comm::Port::<uint>();
-	let chan = comm::Chan::<uint>(port);
+	let chan = comm::Chan::<uint>(&port);
 	let mut count = vec::len(config.hosts);
 	
 	// Accept connections from clients on one or more interfaces.
@@ -20,15 +20,15 @@ fn start(config: &configuration::Config)
 		do task::spawn_sched(task::SingleThreaded)
 		|move host|
 		{
-			let r = do result::chain(socket::bind_socket(host, config2.port))
+			let r = do result::chain(socket::socket::bind_socket(host, config2.port))
 			|shandle|
 			{
-				do result::chain(socket::listen(shandle, 10i32))		// this will block the thread so we use task::ManualThreads to avoid blocking other tasks using that thread
-					|shandle| {attach(&config2, host, shandle)}
+				do result::chain(socket::socket::listen(shandle, 10i32))		// this will block the thread so we use task::ManualThreads to avoid blocking other tasks using that thread
+					|shandle| {attach(copy config2, copy host, shandle)}
 			};
-			if result::is_err(r)
+			if result::is_err(&r)
 			{
-				error!("Couldn't start web server at %s: %s", host, result::get_err(r));
+				error!("Couldn't start web server at %s: %s", host, result::get_err(&r));
 			}
 			comm::send(chan, 1u);
 		};
@@ -43,21 +43,18 @@ fn start(config: &configuration::Config)
 	}
 }
 
-priv fn attach(config: &configuration::Config, host: ~str, shandle: @socket::socket_handle) -> Result<@socket::socket_handle, ~str>
+priv fn attach(config: configuration::Config, host: ~str, shandle: @socket::socket::socket_handle) -> Result<@socket::socket::socket_handle, ~str>
 {
 	info!("server is listening for new connections on %s:%?", host, config.port);
-	do result::chain(socket::accept(shandle))
-	|result|
+	let config2 = copy config;
+	let host2 = copy host;
+	do result::chain(socket::socket::accept(shandle)) |result|
 	{
 		info!("connected to client at %s", result.remote_addr);
-		let config2 = copy *config;
-		let host2 = copy host;
-		let ra2 = copy result.remote_addr;
-		let fd2 = copy result.fd;
 		
 		// We're called by a SingleThread which blocks so we need our own thread to avoid starvation.
 		// We'll go ahead and start two threads so routes can benefit from some parallelism.
-		do task::spawn_sched(task::ManualThreads(2)) |move config2| {handle_connection(&config2, fd2, host2, ra2)};
+		do task::spawn_sched(task::ManualThreads(2)) |copy config2, copy host2| {handle_connection(&config2, result.fd, host2, result.remote_addr)};
 		result::Ok(shandle)
 	};
 	attach(config, host, shandle)

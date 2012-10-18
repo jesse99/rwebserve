@@ -12,7 +12,7 @@ use rparse::misc::{EOT, is_alpha, is_digit, is_alphanum, is_print, is_whitespace
 use rparse::types::{Parser, State, Status, Succeeded, Failed};
 
 // This needs to be a sendable type.
-struct HttpRequest
+pub struct HttpRequest
 {
 	pub method: ~str,				// per 5.1.1 these are case sensitive
 	pub major_version: int,
@@ -23,9 +23,9 @@ struct HttpRequest
 }
 
 // We return a closure so that we can build the parser just once.
-fn make_parser() -> fn@ (~str) -> result::Result<HttpRequest, ~str>
+pub fn make_parser() -> fn@ (&str) -> result::Result<HttpRequest, ~str>
 {
-	|request: ~str|
+	|request: &str|
 	{
 		let parser = request_parser();
 		do result::chain_err(parser.parse(@~"http request", request))
@@ -59,11 +59,11 @@ priv fn to_int(octet: u8) -> uint
 	}
 }
 
-priv fn decode(url: ~str) -> ~str
+priv fn decode(url: &str) -> ~str
 {
 	let mut result = ~"";
 	let mut i = 0u;
-	str::reserve(result, str::len(url));
+	str::reserve(&mut result, str::len(url));
 	
 	while i < str::len(url)
 	{
@@ -83,11 +83,11 @@ priv fn decode(url: ~str) -> ~str
 				i += 1u;
 			}
 			
-			str::push_char(result, code_point as char);
+			str::push_char(&mut result, code_point as char);
 		}
 		else
 		{
-			str::push_char(result, url[i] as char);
+			str::push_char(&mut result, url[i] as char);
 			i += 1u;
 		}
 	}
@@ -140,7 +140,7 @@ priv fn request_parser() -> Parser<HttpRequest>
 }
 
 #[cfg(test)]
-fn equal_strs(result: ~str, expected: ~str) -> bool
+fn equal_strs(result: &str, expected: &str) -> bool
 {
 	if result != expected
 	{
