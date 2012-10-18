@@ -1,10 +1,7 @@
 //! The module responsible for communication using a persistent connection to a client.
 //use socket::*;
-use std::map::*;
 //use http_parser::*;
-use imap::*;
 use request::{process_request, make_header_and_body};
-//use sse::*;
 
 // Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.
 pub struct ConnConfig
@@ -17,8 +14,8 @@ pub struct ConnConfig
 	pub views_table: HashMap<@~str, ResponseHandler>,
 	pub static_handler: ResponseHandler,
 	pub is_template: IsTemplateFile,
-	pub sse_openers: HashMap<@~str, sse::OpenSse>,		// key is a GET path
-	pub sse_tasks: HashMap<@~str, sse::ControlChan>,	// key is a GET path
+	pub sse_openers: HashMap<@~str, OpenSse>,		// key is a GET path
+	pub sse_tasks: HashMap<@~str, ControlChan>,	// key is a GET path
 	pub sse_push: comm::Chan<~str>,
 	pub missing: ResponseHandler,
 	pub static_type_table: HashMap<@~str, @~str>,
@@ -86,12 +83,12 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: &str, rem
 			}
 			either::Left(option::None) =>
 			{
-				sse::close_sses(&iconfig);
+				close_sses(&iconfig);
 				break;
 			}
 			either::Right(move body) =>
 			{
-				let response = sse::make_response(&iconfig);
+				let response = make_response(&iconfig);
 				let (_, body) = make_header_and_body(&response, StringBody(@body));
 				write_response(sock, ~"", body);
 			}

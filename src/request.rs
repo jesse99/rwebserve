@@ -1,8 +1,6 @@
 //! Handles an incoming request from a client connection and sends a response.
 use io::WriterUtil;
-use imap::*;
 use http_parser::{HttpRequest};
-use sse::{process_sse};
 //use utils::*;
 
 // TODO:
@@ -24,7 +22,7 @@ pub fn process_request(config: &connection::ConnConfig, request: &HttpRequest, l
 	(header, body)
 }
 
-priv fn parse_url(url: &str) -> (~str, imap::IMap<@~str, @~str>)
+priv fn parse_url(url: &str) -> (~str, IMap<@~str, @~str>)
 {
 	match str::find_char(url, '?')
 	{

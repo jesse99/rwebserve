@@ -1,8 +1,6 @@
 //! Types and functions used to configure rwebserve.
 //use mustache::*;
-//use sse::*;
 use std::base64::*;
-//use std::map::HashMap;
 //use std::serialization::{Serializable, Serializer};
 //use std::json::Json;
 
@@ -37,7 +35,7 @@ pub struct Config
 	pub views: ~[(~str, ResponseHandler)],
 	pub static_handler: ResponseHandler,
 	pub is_template: IsTemplateFile,
-	pub sse: ~[(~str, sse::OpenSse)],
+	pub sse: ~[(~str, OpenSse)],
 	pub missing: ResponseHandler,
 	pub static_types: ~[(~str, ~str)],
 	pub read_error: ~str,
@@ -65,7 +63,7 @@ pub struct Request
 	pub remote_addr: ~str,
 	pub path: ~str,
 	pub matches: HashMap<@~str, @~str>,
-	pub params: imap::IMap<@~str, @~str>,
+	pub params: IMap<@~str, @~str>,
 	pub headers: HashMap<@~str, @~str>,
 	pub body: ~str,
 	

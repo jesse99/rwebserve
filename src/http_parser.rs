@@ -1,15 +1,13 @@
 use io::{WriterUtil};
 //use rparse::rparse::*;
-use mod std::map;
-use imap::*;
 
-use rparse::c99_parsers::{identifier, decimal_number, octal_number, hex_number, float_number, char_literal, string_literal, comment, line_comment};
-use rparse::parsers::{ParseStatus, ParseFailed, anycp, CharParsers, 
+use rparse::{identifier, decimal_number, octal_number, hex_number, float_number, char_literal, string_literal, comment, line_comment};
+use rparse::{ParseStatus, ParseFailed, anycp, CharParsers, 
 	match0, match1, match1_0, scan, seq2_ret_str, seq3_ret_str, seq4_ret_str, seq5_ret_str, StringParsers,
 	fails, forward_ref, or_v, ret, seq2, seq3, seq4, seq5, seq6, seq7, seq8, seq9, seq2_ret0, seq2_ret1, seq3_ret0, seq3_ret1, seq3_ret2, seq4_ret0, 
 	seq4_ret1, seq4_ret2, seq4_ret3, GenericParsers, Combinators, optional_str};
-use rparse::misc::{EOT, is_alpha, is_digit, is_alphanum, is_print, is_whitespace};
-use rparse::types::{Parser, State, Status, Succeeded, Failed};
+use rparse::{EOT, is_alpha, is_digit, is_alphanum, is_print, is_whitespace};
+use rparse::{Parser, State, Status, Succeeded, Failed};
 
 // This needs to be a sendable type.
 pub struct HttpRequest
