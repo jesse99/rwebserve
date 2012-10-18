@@ -5,7 +5,7 @@ use connection::{handle_connection};
 /// Startup the server.
 /// 
 /// Currently this will run until a client does a GET on '/shutdown' in which case exit is called.
-pub fn start(config: &configuration::Config)
+pub fn start(config: &Config)
 {
 	let port = comm::Port::<uint>();
 	let chan = comm::Chan::<uint>(&port);
@@ -43,7 +43,7 @@ pub fn start(config: &configuration::Config)
 	}
 }
 
-priv fn attach(config: configuration::Config, host: ~str, shandle: @socket::socket::socket_handle) -> Result<@socket::socket::socket_handle, ~str>
+priv fn attach(config: Config, host: ~str, shandle: @socket::socket::socket_handle) -> Result<@socket::socket::socket_handle, ~str>
 {
 	info!("server is listening for new connections on %s:%?", host, config.port);
 	let config2 = copy config;

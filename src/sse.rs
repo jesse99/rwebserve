@@ -1,8 +1,6 @@
 /// Server-sent event support.
 // http://www.w3.org/TR/2009/WD-html5-20090212/comms.html
 // http://dev.w3.org/html5/eventsource
-use std::map::*;
-use path::{Path};
 //use mustache::*;
 
 /// Called by the server to spin up a task for an sse session. Returns a
@@ -10,7 +8,7 @@ use path::{Path};
 ///
 /// The hashmap contains the config settings. The PushChan allows the
 /// task to push data to the client.
-pub type OpenSse = fn~ (config: &connection::ConnConfig, request: &configuration::Request, channel: PushChan) -> ControlChan;
+pub type OpenSse = fn~ (config: &connection::ConnConfig, request: &Request, channel: PushChan) -> ControlChan;
 
 /// The channel used by server tasks to send data to a client.
 ///
@@ -38,7 +36,7 @@ pub enum ControlEvent
 }
 
 // This is invoked when the client sends a GET on behalf of an event source.
-pub fn process_sse(config: &connection::ConnConfig, request: &configuration::Request) -> (configuration::Response, configuration::Body)
+pub fn process_sse(config: &connection::ConnConfig, request: &Request) -> (Response, Body)
 {
 	let mut code = ~"200";
 	let mut mesg = ~"OK";
@@ -64,11 +62,11 @@ pub fn process_sse(config: &connection::ConnConfig, request: &configuration::Req
 	let response = request::make_initial_response(config, code, mesg, mime, request);
 	response.headers.insert(@~"Transfer-Encoding", @~"chunked");
 	response.headers.insert(@~"Cache-Control", @~"no-cache");
-	(response, configuration::StringBody(@~"\n\n"))
+	(response, StringBody(@~"\n\n"))
 }
 
 // TODO: Chrome, at least, doesn't seem to close EventSources so we need to time these out.
-pub fn OpenSse(config: &connection::ConnConfig, request: &configuration::Request, push_data: PushChan) -> bool
+pub fn OpenSse(config: &connection::ConnConfig, request: &Request, push_data: PushChan) -> bool
 {
 	match config.sse_openers.find(@copy request.path)
 	{
@@ -97,7 +95,7 @@ pub fn close_sses(config: &connection::ConnConfig)
 	};
 }
 
-pub fn make_response(config: &connection::ConnConfig) -> configuration::Response
+pub fn make_response(config: &connection::ConnConfig) -> Response
 {
 	let headers = utils::to_boxed_str_hash(~[
 		(~"Cache-Control", ~"no-cache"),
@@ -107,6 +105,6 @@ pub fn make_response(config: &connection::ConnConfig) -> configuration::Response
 		(~"Transfer-Encoding", ~"chunked"),
 	]);
 	
-	configuration::Response {status: ~"200 OK", headers: headers, body: configuration::StringBody(@~""), template: ~"", context: std::map::HashMap()}
+	Response {status: ~"200 OK", headers: headers, body: StringBody(@~""), template: ~"", context: std::map::HashMap()}
 }
 

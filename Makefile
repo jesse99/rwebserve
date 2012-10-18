@@ -45,9 +45,9 @@ update-libraries:
 # TODO: enable optimizations (-O), disabled because it can cause problems with back traces
 .PHONY : lib
 lib:
-	$(RUSTC) --out-dir bin -L bin src/crate.rc
+	$(RUSTC) --out-dir bin -L bin src/rwebserve.rc
 
-bin/test-server: src/crate.rc src/*.rs
+bin/test-server: src/rwebserve.rc src/*.rs
 	$(RUSTC) -L bin --test -o $@ $<
 
 bin/server: server/src/server.rc server/src/*.rs lib

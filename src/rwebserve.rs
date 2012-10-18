@@ -1,4 +1,9 @@
 //! Public API for rwebserve.
+use std::map::*;
+use Path = path::Path;
+
+pub use configuration::*;
+
 //use configuration::*;
 //use imap::*;
 //use server::*;

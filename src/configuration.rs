@@ -1,10 +1,8 @@
 //! Types and functions used to configure rwebserve.
-use Path = path::Path;
-use std::map::*;
 //use mustache::*;
 //use sse::*;
 use std::base64::*;
-use std::map::HashMap;
+//use std::map::HashMap;
 //use std::serialization::{Serializable, Serializer};
 //use std::json::Json;
 

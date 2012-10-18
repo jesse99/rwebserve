@@ -1,7 +1,6 @@
 //! The module responsible for communication using a persistent connection to a client.
 //use socket::*;
 use std::map::*;
-//use configuration::*;
 //use http_parser::*;
 use imap::*;
 use request::{process_request, make_header_and_body};
@@ -14,24 +13,24 @@ pub struct ConnConfig
 	pub port: u16,
 	pub server_info: ~str,
 	pub resources_root: Path,
-	pub route_list: ~[configuration::Route],
-	pub views_table: HashMap<@~str, configuration::ResponseHandler>,
-	pub static_handler: configuration::ResponseHandler,
-	pub is_template: configuration::IsTemplateFile,
+	pub route_list: ~[Route],
+	pub views_table: HashMap<@~str, ResponseHandler>,
+	pub static_handler: ResponseHandler,
+	pub is_template: IsTemplateFile,
 	pub sse_openers: HashMap<@~str, sse::OpenSse>,		// key is a GET path
 	pub sse_tasks: HashMap<@~str, sse::ControlChan>,	// key is a GET path
 	pub sse_push: comm::Chan<~str>,
-	pub missing: configuration::ResponseHandler,
+	pub missing: ResponseHandler,
 	pub static_type_table: HashMap<@~str, @~str>,
 	pub read_error: ~str,
-	pub load_rsrc: configuration::RsrcLoader,
-	pub valid_rsrc: configuration::RsrcExists,
+	pub load_rsrc: RsrcLoader,
+	pub valid_rsrc: RsrcExists,
 	pub settings: HashMap<@~str, @~str>,
 	
 	drop {}
 }
 
-pub fn config_to_conn(config: &configuration::Config, push: comm::Chan<~str>) -> ConnConfig
+pub fn config_to_conn(config: &Config, push: comm::Chan<~str>) -> ConnConfig
 {
 	ConnConfig {
 		hosts: config.hosts,
@@ -55,7 +54,7 @@ pub fn config_to_conn(config: &configuration::Config, push: comm::Chan<~str>) ->
 }
 
 // TODO: probably want to use task::unsupervise
-pub fn handle_connection(config: &configuration::Config, fd: libc::c_int, local_addr: &str, remote_addr: &str)
+pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: &str, remote_addr: &str)
 {
 	let request_port = comm::Port();
 	let request_chan = comm::Chan(&request_port);
@@ -93,7 +92,7 @@ pub fn handle_connection(config: &configuration::Config, fd: libc::c_int, local_
 			either::Right(move body) =>
 			{
 				let response = sse::make_response(&iconfig);
-				let (_, body) = make_header_and_body(&response, configuration::StringBody(@body));
+				let (_, body) = make_header_and_body(&response, StringBody(@body));
 				write_response(sock, ~"", body);
 			}
 		}
@@ -261,21 +260,21 @@ priv fn read_body(sock: @socket::socket::socket_handle, content_length: ~str) ->
 
 // TODO: check connection: keep-alive
 // TODO: presumbably when we switch to a better socket library we'll be able to handle errors here...
-priv fn write_response(sock: @socket::socket::socket_handle, header: ~str, body: configuration::Body) unsafe
+priv fn write_response(sock: @socket::socket::socket_handle, header: ~str, body: Body) unsafe
 {
-	fn write_body(sock: @socket::socket::socket_handle, body: &configuration::Body) unsafe
+	fn write_body(sock: @socket::socket::socket_handle, body: &Body) unsafe
 	{
 		match *body
 		{
-			configuration::StringBody(text) =>
+			StringBody(text) =>
 			{
 				do str::as_buf(*text) |buffer, _len| 	{socket::socket::send_buf(sock, buffer, text.len())};
 			}
-			configuration::BinaryBody(binary) =>
+			BinaryBody(binary) =>
 			{
 				socket::socket::send_buf(sock, vec::raw::to_ptr(*binary), binary.len());
 			}
-			configuration::CompoundBody(parts) =>
+			CompoundBody(parts) =>
 			{
 				for parts.each |part| {write_body(sock, *part)};
 			}
@@ -382,7 +381,7 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 	return str::connect(errors, ~" ");
 }
 
-pub fn to_route(input: &(~str, ~str, ~str)) -> configuration::Route
+pub fn to_route(input: &(~str, ~str, ~str)) -> Route
 {
 	match *input
 	{
@@ -400,7 +399,7 @@ pub fn to_route(input: &(~str, ~str, ~str)) -> configuration::Route
 					(template_str, ~"text/html")
 				};
 			
-			configuration::Route {method: *method, template: uri_template::compile(template), mime_type: mime_type, route: *route}
+			Route {method: *method, template: uri_template::compile(template), mime_type: mime_type, route: *route}
 		}
 	}
 }
@@ -408,13 +407,13 @@ pub fn to_route(input: &(~str, ~str, ~str)) -> configuration::Route
 #[test]
 fn routes_must_have_views()
 {
-	let config = configuration::Config {
+	let config = Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
 		routes: ~[(~"GET", ~"/", ~"home"), (~"GET", ~"/hello", ~"greeting"), (~"GET", ~"/goodbye", ~"farewell")],
-		views: ~[(~"home",  configuration::missing_view)],
-		..configuration::initialize_config()};
+		views: ~[(~"home",  missing_view)],
+		..initialize_config()};
 		
 	let sse_port = comm::Port();
 	let sse_chan = comm::Chan(&sse_port);
@@ -426,13 +425,13 @@ fn routes_must_have_views()
 #[test]
 fn views_must_have_routes()
 {
-	let config = configuration::Config {
+	let config = Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"server/html"),
 		routes: ~[(~"GET", ~"/", ~"home")],
-		views: ~[(~"home",  configuration::missing_view), (~"greeting",  configuration::missing_view), (~"goodbye",  configuration::missing_view)],
-		..configuration::initialize_config()};
+		views: ~[(~"home",  missing_view), (~"greeting",  missing_view), (~"goodbye",  missing_view)],
+		..initialize_config()};
 		
 	let sse_port = comm::Port();
 	let sse_chan = comm::Chan(&sse_port);
@@ -444,13 +443,13 @@ fn views_must_have_routes()
 #[test]
 fn root_must_have_required_files()
 {
-	let config = configuration::Config {
+	let config = Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: path::from_str(~"/tmp"),
 		routes: ~[(~"GET", ~"/", ~"home")],
-		views: ~[(~"home",  configuration::missing_view)],
-		..configuration::initialize_config()};
+		views: ~[(~"home",  missing_view)],
+		..initialize_config()};
 		
 	let sse_port = comm::Port();
 	let sse_chan = comm::Chan(&sse_port);
