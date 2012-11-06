@@ -24,14 +24,14 @@ check1: bin/test-server
 # Better to use /usr/local/lib but linking it in with -L /usr/local/lib fails because
 # there is a libccore there and in the nested rustc directory.
 install:
-	install -p `find bin -name "librwebserve*" -type f -maxdepth 1` /usr/local/lib/rust
+	install -p `find bin -maxdepth 1 -name "librwebserve*" -type f` /usr/local/lib/rust
 	
 # You can either use this target (assuming that the libraries are in /usr/local/lib/rust)
 # or install them via cargo.
 update-libraries:
-	cp /usr/local/lib/rust/libmustache-*-0.3pre.dylib bin
-	cp /usr/local/lib/rust/libsocket-*-0.1.dylib bin
-	cp /usr/local/lib/rust/librparse-*-0.6.dylib bin
+	cp /usr/local/lib/rust/libmustache-*-0.3pre.* bin
+	cp /usr/local/lib/rust/libsocket-*-0.1.* bin
+	cp /usr/local/lib/rust/librparse-*-0.6.* bin
 
 # ------------------
 # Binary targets 
