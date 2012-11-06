@@ -179,8 +179,8 @@ priv fn read_headers(remote_addr: &str, sock: @socket::socket::socket_handle) ->
 	
 	if str::is_utf8(buffer)
 	{
-		let mut headers = str::raw::from_buf(vec::raw::to_ptr(buffer));
-		str::raw::set_len(&mut headers, vec::len(buffer));		// push adds garbage after the end of the actual elements (i.e. the capacity part)
+		let c_str = cast::reinterpret_cast(&vec::raw::to_ptr(buffer));
+		let headers = str::raw::from_c_str(c_str);
 		debug!("headers: %s", headers);
 		headers
 	}
