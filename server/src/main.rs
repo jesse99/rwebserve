@@ -47,7 +47,7 @@ fn parse_command_line(args: &[~str]) -> Options
 	{
 		if i > 0
 		{
-			vec::push(&mut t, a.to_unique());
+			vec::push(&mut t, a.to_owned());
 		}
 	}
 	//let t = vec::tail(args);
@@ -109,27 +109,27 @@ fn greeting_view(_config: &ConnConfig, request: &Request, response: &Response) -
 
 enum StateMesg
 {
-	AddListener(~str, comm::Chan<int>),	// str is used to identify the listener
+	AddListener(~str, oldcomm::Chan<int>),	// str is used to identify the listener
 	RemoveListener(~str),
 	Shutdown,
 }
 
-type StateChan = comm::Chan<StateMesg>;
+type StateChan = oldcomm::Chan<StateMesg>;
 
 // Like spawn_listener except that it supports custom modes. This allows code that blocks
 // within a foreign function to avoid blocking other tasks which may be on its thread.
-fn spawn_moded_listener<A: Send>(mode: task::SchedMode, +f: fn~(comm::Port<A>)) -> comm::Chan<A>
+fn spawn_moded_listener<A: Send>(mode: task::SchedMode, +f: fn~(oldcomm::Port<A>)) -> oldcomm::Chan<A>
 {
-	let setup_po = comm::Port();
-	let setup_ch = comm::Chan(&setup_po);
+	let setup_po = oldcomm::Port();
+	let setup_ch = oldcomm::Chan(&setup_po);
 	do task::spawn_sched(mode)
 	{
-		let po = comm::Port();
-		let ch = comm::Chan(&po);
-		comm::send(setup_ch, ch);
+		let po = oldcomm::Port();
+		let ch = oldcomm::Chan(&po);
+		oldcomm::send(setup_ch, ch);
 		f(po);
 	}
-	comm::recv(setup_po)
+	oldcomm::recv(setup_po)
 }
 
 // This is a single task that manages the state for our sample server. Normally this will
@@ -141,7 +141,7 @@ fn spawn_moded_listener<A: Send>(mode: task::SchedMode, +f: fn~(comm::Port<A>)) 
 fn manage_state() -> StateChan
 {
 	do spawn_moded_listener(task::ManualThreads(1))
-	|state_port: comm::Port<StateMesg>|
+	|state_port: oldcomm::Port<StateMesg>|
 	{
 		let mut time = 0;
 		let listeners = std::map::HashMap();
@@ -149,7 +149,7 @@ fn manage_state() -> StateChan
 		{
 			time += 1;
 			libc::funcs::posix88::unistd::sleep(1);
-			for listeners.each_value |ch| {comm::send(ch, copy(time))};
+			for listeners.each_value |ch| {oldcomm::send(ch, copy(time))};
 			
 			if state_port.peek()
 			{
@@ -185,16 +185,16 @@ fn uptime_sse(registrar: StateChan, request: &Request, push: server::PushChan) -
 	|control_port: server::ControlPort|
 	{
 		info!("starting uptime sse stream");
-		let notify_port = comm::Port();
-		let notify_chan = comm::Chan(&notify_port);
+		let notify_port = oldcomm::Port();
+		let notify_chan = oldcomm::Chan(&notify_port);
 		
 		let key = fmt!("uptime %?", ptr::addr_of(&notify_port));
-		comm::send(registrar, AddListener(key, notify_chan));
+		oldcomm::send(registrar, AddListener(key, notify_chan));
 		
 		loop
 		{
 			let mut time = 0;
-			match comm::select2(notify_port, control_port)
+			match oldcomm::select2(notify_port, control_port)
 			{
 				either::Left(new_time) =>
 				{
@@ -208,16 +208,16 @@ fn uptime_sse(registrar: StateChan, request: &Request, push: server::PushChan) -
 					{
 						time = new_time/60;
 					}
-					comm::send(push, fmt!("retry: 5000\ndata: %?\n\n", time));
+					oldcomm::send(push, fmt!("retry: 5000\ndata: %?\n\n", time));
 				}
 				either::Right(server::RefreshEvent) =>
 				{
-					comm::send(push, fmt!("retry: 5000\ndata: %?\n\n", time));
+					oldcomm::send(push, fmt!("retry: 5000\ndata: %?\n\n", time));
 				}
 				either::Right(server::CloseEvent) =>
 				{
 					info!("shutting down uptime sse stream");
-					comm::send(registrar, RemoveListener(key));
+					oldcomm::send(registrar, RemoveListener(key));
 					break;
 				}
 			}

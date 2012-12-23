@@ -2,17 +2,15 @@ use io::{WriterUtil};
 
 //use rparse::rparse::*;
 use rparse::{identifier, decimal_number, octal_number, hex_number, float_number, char_literal, string_literal, comment, line_comment};
-use rparse::{ParseStatus, ParseFailed, anycp, CharParsers, 
-	match0, match1, match1_0, scan, seq2_ret_str, seq3_ret_str, seq4_ret_str, seq5_ret_str, StringParsers,
-	fails, forward_ref, or_v, ret, seq2, seq3, seq4, seq5, seq6, seq7, seq8, seq9, seq2_ret0, seq2_ret1, seq3_ret0, seq3_ret1, seq3_ret2, seq4_ret0, 
-	seq4_ret1, seq4_ret2, seq4_ret3, GenericParsers, Combinators, optional_str};
+use rparse::{ParseStatus, ParseFailed, CharParsers, GenericParsers, Combinators,
+	match1, StringParsers, seq3, seq5, seq7, seq9};
 use rparse::{EOT, is_alpha, is_digit, is_alphanum, is_print, is_whitespace};
 use rparse::{Parser, State, Status, Succeeded, Failed};
 
 // This needs to be a sendable type.
 pub struct HttpRequest
 {
-	pub method: ~str,				// per 5.1.1 these are case sensitive
+	pub method: ~str,					// per 5.1.1 these are case sensitive
 	pub major_version: int,
 	pub minor_version: int,
 	pub url: ~str,
@@ -132,7 +130,7 @@ priv fn request_parser() -> Parser<HttpRequest>
 		|a1, h, _a2|
 		{
 			let (n, u, (v1, v2)) = a1;
-			result::Ok(HttpRequest {method: *n, major_version: v1, minor_version: v2, url: decode(*u), headers: *h, body: ~""})};
+			result::Ok(HttpRequest {method: copy *n, major_version: v1, minor_version: v2, url: decode(*u), headers: copy *h, body: ~""})};
 	
 	return request;
 }

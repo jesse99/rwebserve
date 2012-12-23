@@ -1,23 +1,10 @@
 // Components of a template path.
+#[deriving_eq]
 pub enum Component
 {
 	Literal(~str),		// match iff the component is str
 	Variable(~str),		// matches an arbitrary component, str will be the key name
 	Trailer(~str)		// matches zero or more components, str will be the key name
-}
-
-// TODO: This is hopefully temporary: at some point rust should again be able to compare enums without assistence.
-pub impl Component : cmp::Eq
-{
-	pure fn eq(rhs: &Component) -> bool
-	{
-		fmt!("%?", self) == fmt!("%?", *rhs)
-	}
-	
-	pure fn ne(rhs: &Component) -> bool
-	{
-		fmt!("%?", self) != fmt!("%?", *rhs)
-	}
 }
 
 // Template should correspond to the path component of an URI.
@@ -38,7 +25,7 @@ pub fn compile(template: &str) -> ~[Component]
 		}
 		else
 		{
-			Literal(part.to_unique())
+			Literal(part.to_owned())
 		}
 	};
 	
@@ -100,7 +87,7 @@ pub fn match_template(path: &str, components: &[Component]) -> HashMap<@~str, @~
 		return std::map::HashMap();				// not all parts were matched
 	}
 	
-	result.insert(@~"fullpath", @path.to_unique());
+	result.insert(@~"fullpath", @path.to_owned());
 	return result;
 }
 

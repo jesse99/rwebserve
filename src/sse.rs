@@ -13,13 +13,13 @@ pub type OpenSse = fn~ (config: &connection::ConnConfig, request: &Request, chan
 ///
 /// In the simplest case the data would contain a single line with the format: 
 /// "data: arbitrary text\n". For more details see [event stream](http://dev.w3.org/html5/eventsource/#event-stream-interpretation).
-pub type PushChan = comm::Chan<~str>;
+pub type PushChan = oldcomm::Chan<~str>;
 
 /// The port sse tasks use to respond to events from the server.
-pub type ControlPort = comm::Port<ControlEvent>;
+pub type ControlPort = oldcomm::Port<ControlEvent>;
 
 /// The channel used by the server to communicate with sse tasks.
-pub type ControlChan = comm::Chan<ControlEvent>;
+pub type ControlChan = oldcomm::Chan<ControlEvent>;
 
 /// The data sent by the ControlChan to a task.
 ///
@@ -45,7 +45,7 @@ pub fn process_sse(config: &connection::ConnConfig, request: &Request) -> (Respo
 	{
 		option::Some(sse) =>
 		{
-			comm::send(sse, RefreshEvent);
+			oldcomm::send(sse, RefreshEvent);
 		}
 		option::None =>
 		{
@@ -90,7 +90,7 @@ pub fn close_sses(config: &connection::ConnConfig)
 	for config.sse_tasks.each_value
 	|control_ch|
 	{
-		comm::send(control_ch, CloseEvent);
+		oldcomm::send(control_ch, CloseEvent);
 	};
 }
 

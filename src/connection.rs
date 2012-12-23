@@ -1,5 +1,6 @@
 //! The module responsible for communication using a persistent connection to a client.
 //use socket::*;
+use core::path::{GenericPath};
 use request::{process_request, make_header_and_body};
 
 // Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.
@@ -14,8 +15,8 @@ pub struct ConnConfig
 	pub static_handler: ResponseHandler,
 	pub is_template: IsTemplateFile,
 	pub sse_openers: HashMap<@~str, OpenSse>,		// key is a GET path
-	pub sse_tasks: HashMap<@~str, ControlChan>,	// key is a GET path
-	pub sse_push: comm::Chan<~str>,
+	pub sse_tasks: HashMap<@~str, ControlChan>,		// key is a GET path
+	pub sse_push: oldcomm::Chan<~str>,
 	pub missing: ResponseHandler,
 	pub static_type_table: HashMap<@~str, @~str>,
 	pub read_error: ~str,
@@ -26,13 +27,13 @@ pub struct ConnConfig
 	drop {}
 }
 
-pub fn config_to_conn(config: &Config, push: comm::Chan<~str>) -> ConnConfig
+pub fn config_to_conn(config: &Config, push: oldcomm::Chan<~str>) -> ConnConfig
 {
 	ConnConfig {
-		hosts: config.hosts,
+		hosts: copy config.hosts,
 		port: config.port,
-		server_info: config.server_info,
-		resources_root: config.resources_root,
+		server_info: copy config.server_info,
+		resources_root: copy config.resources_root,
 		route_list: vec::map(config.routes, to_route),
 		views_table: utils::boxed_hash_from_strs(config.views),
 		static_handler: copy config.static_handler,
@@ -42,7 +43,7 @@ pub fn config_to_conn(config: &Config, push: comm::Chan<~str>) -> ConnConfig
 		sse_push: push,
 		missing: copy config.missing,
 		static_type_table: utils::to_boxed_str_hash(config.static_types),
-		read_error: config.read_error,
+		read_error: copy config.read_error,
 		load_rsrc: copy config.load_rsrc,
 		valid_rsrc: copy config.valid_rsrc,
 		settings: utils::to_boxed_str_hash(config.settings),
@@ -52,10 +53,10 @@ pub fn config_to_conn(config: &Config, push: comm::Chan<~str>) -> ConnConfig
 // TODO: probably want to use task::unsupervise
 pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: &str, remote_addr: &str)
 {
-	let request_port = comm::Port();
-	let request_chan = comm::Chan(&request_port);
-	let sse_port = comm::Port();
-	let sse_chan = comm::Chan(&sse_port);
+	let request_port = oldcomm::Port();
+	let request_chan = oldcomm::Chan(&request_port);
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
 	let sock = @socket::socket::socket_handle(fd);
 	
 	let iconfig = config_to_conn(config, sse_chan);
@@ -67,15 +68,15 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: &str, rem
 	}
 	
 	// read_requests needs to run on its own thread so it doesn't block this task. 
-	let ra = remote_addr.to_unique();
+	let ra = remote_addr.to_owned();
 	do task::spawn_sched(task::SingleThreaded) {read_requests(ra, fd, request_chan);}
 	
 	loop
 	{
 		debug!("-----------------------------------------------------------");
-		match comm::select2(request_port, sse_port)
+		match oldcomm::select2(request_port, sse_port)
 		{
-			either::Left(option::Some(ref request)) =>
+			either::Left(option::Some(move request)) =>
 			{
 				let (header, body) = process_request(&iconfig, request, local_addr, remote_addr);
 				write_response(sock, header, body);
@@ -95,7 +96,7 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: &str, rem
 	}
 }
 
-priv fn read_requests(remote_addr: &str, fd: libc::c_int, poke: comm::Chan<option::Option<http_parser::HttpRequest>>)
+priv fn read_requests(remote_addr: &str, fd: libc::c_int, poke: oldcomm::Chan<option::Option<http_parser::HttpRequest>>)
 {
 	let sock = @socket::socket::socket_handle(fd);		// socket::socket_handle(fd);
 	let parse = http_parser::make_parser();
@@ -114,13 +115,13 @@ priv fn read_requests(remote_addr: &str, fd: libc::c_int, poke: comm::Chan<optio
 						let body = read_body(sock, request.headers.get(~"content-length"));
 						if str::is_not_empty(body)
 						{
-							comm::send(poke, option::Some(http_parser::HttpRequest {body: body, ..*request}));
+							oldcomm::send(poke, option::Some(http_parser::HttpRequest {body: body, ..copy *request}));
 							ok = true;
 						}
 					}
 					else
 					{
-						comm::send(poke, option::Some(copy *request));
+						oldcomm::send(poke, option::Some(copy *request));
 						ok = true;
 					}
 				}
@@ -136,7 +137,7 @@ priv fn read_requests(remote_addr: &str, fd: libc::c_int, poke: comm::Chan<optio
 			// Client closed connection or there was some sort of error
 			// (in which case the client will re-open a connection).
 			info!("detached from %s", remote_addr);
-			comm::send(poke, option::None);
+			oldcomm::send(poke, option::None);
 			break;
 		}
 	}
@@ -206,7 +207,7 @@ priv fn found_headers(buffer: &[u8]) -> bool
 
 priv fn read_body(sock: @socket::socket::socket_handle, content_length: ~str) -> ~str unsafe
 {
-	let total_len = option::get(&uint::from_str(content_length));
+	let total_len = option::get(uint::from_str(content_length));
 	
 	let mut buffer = ~[];
 	vec::reserve(&mut buffer, total_len);
@@ -352,7 +353,7 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 	if vec::is_not_empty(missing_routes)
 	{
 		pure fn le(a: &~str, b: &~str) -> bool {*a <= *b}
-		let missing_routes = std::sort::merge_sort(le, missing_routes);		// order depends on hash, but for unit tests we want to use something more consistent
+		let missing_routes = std::sort::merge_sort(missing_routes, le);		// order depends on hash, but for unit tests we want to use something more consistent
 		
 		vec::push(&mut errors, fmt!("No views for the following routes: %s", str::connect(missing_routes, ~", ")));
 	}
@@ -369,7 +370,7 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 	if vec::is_not_empty(missing_views)
 	{
 		pure fn le(a: &~str, b: &~str) -> bool {*a <= *b}
-		let missing_views = std::sort::merge_sort(le, missing_views);
+		let missing_views = std::sort::merge_sort(missing_views, le);
 		
 		vec::push(&mut errors, fmt!("No routes for the following views: %s", str::connect(missing_views, ~", ")));
 	}
@@ -381,21 +382,21 @@ pub fn to_route(input: &(~str, ~str, ~str)) -> Route
 {
 	match *input
 	{
-		(ref method, copy template_str, ref route) =>
+		(copy method, copy template_str, copy route) =>
 		{
 			let i = str::find_char(template_str, '<');
 			let (template, mime_type) = if option::is_some(&i)
 				{
-					let j = str::find_char_from(template_str, '>', option::get(&i)+1u);
+					let j = str::find_char_from(template_str, '>', option::get(i)+1u);
 					assert option::is_some(&j);
-					(str::slice(template_str, 0u, option::get(&i)), str::slice(template_str, option::get(&i)+1u, option::get(&j)))
+					(str::slice(template_str, 0u, option::get(i)), str::slice(template_str, option::get(i)+1u, option::get(j)))
 				}
 				else
 				{
 					(template_str, ~"text/html")
 				};
 			
-			Route {method: *method, template: uri_template::compile(template), mime_type: mime_type, route: *route}
+			Route {method: method, template: uri_template::compile(template), mime_type: mime_type, route: route}
 		}
 	}
 }
@@ -406,13 +407,13 @@ fn routes_must_have_views()
 	let config = Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
-		resources_root: path::from_str(~"server/html"),
+		resources_root: GenericPath::from_str(~"server/html"),
 		routes: ~[(~"GET", ~"/", ~"home"), (~"GET", ~"/hello", ~"greeting"), (~"GET", ~"/goodbye", ~"farewell")],
 		views: ~[(~"home",  missing_view)],
 		..initialize_config()};
 		
-	let sse_port = comm::Port();
-	let sse_chan = comm::Chan(&sse_port);
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
 	let iconfig = config_to_conn(&config, sse_chan);
 	
 	assert validate_config(&iconfig) == ~"No views for the following routes: farewell, greeting";
@@ -424,13 +425,13 @@ fn views_must_have_routes()
 	let config = Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
-		resources_root: path::from_str(~"server/html"),
+		resources_root: GenericPath::from_str(~"server/html"),
 		routes: ~[(~"GET", ~"/", ~"home")],
 		views: ~[(~"home",  missing_view), (~"greeting",  missing_view), (~"goodbye",  missing_view)],
 		..initialize_config()};
 		
-	let sse_port = comm::Port();
-	let sse_chan = comm::Chan(&sse_port);
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
 	let iconfig = config_to_conn(&config, sse_chan);
 	
 	assert validate_config(&iconfig) == ~"No routes for the following views: goodbye, greeting";
@@ -442,13 +443,13 @@ fn root_must_have_required_files()
 	let config = Config {
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
-		resources_root: path::from_str(~"/tmp"),
+		resources_root: GenericPath::from_str(~"/tmp"),
 		routes: ~[(~"GET", ~"/", ~"home")],
 		views: ~[(~"home",  missing_view)],
 		..initialize_config()};
 		
-	let sse_port = comm::Port();
-	let sse_chan = comm::Chan(&sse_port);
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
 	let iconfig = config_to_conn(&config, sse_chan);
 	
 	assert validate_config(&iconfig) == ~"Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";

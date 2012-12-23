@@ -7,8 +7,8 @@ use connection::{handle_connection};
 /// Currently this will run until a client does a GET on '/shutdown' in which case exit is called.
 pub fn start(config: &Config)
 {
-	let port = comm::Port::<uint>();
-	let chan = comm::Chan::<uint>(&port);
+	let port = oldcomm::Port::<uint>();
+	let chan = oldcomm::Chan::<uint>(&port);
 	let mut count = vec::len(config.hosts);
 	
 	// Accept connections from clients on one or more interfaces.
@@ -30,7 +30,7 @@ pub fn start(config: &Config)
 			{
 				error!("Couldn't start web server at %s: %s", host, result::get_err(&r));
 			}
-			comm::send(chan, 1u);
+			oldcomm::send(chan, 1u);
 		};
 	};
 	
@@ -38,7 +38,7 @@ pub fn start(config: &Config)
 	// likely only to happen in the event of errors).
 	while count > 0u
 	{
-		let result = comm::recv(port);
+		let result = oldcomm::recv(port);
 		count -= result;
 	}
 }

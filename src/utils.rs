@@ -1,18 +1,19 @@
 //! Misc functions used internally.
+use core::path::{GenericPath};
 use io::WriterUtil;
 
 // The url should be the path component of an URL. It will usually be
 // an absolute path which is actually relative to root.
 pub fn url_to_path(root: &Path, url: &str) -> Path
 {
-	let path = path::from_str(
+	let path = GenericPath::from_str(
 		if url.is_not_empty() && url.char_at(0) == '/'
 		{
 			url.slice(1, url.len())
 		}
 		else
 		{
-			url.to_unique()
+			url.to_owned()
 		}
 	);
 	root.push_rel(&path)
@@ -96,7 +97,7 @@ pub fn truncate_str(s: &str, max_chars: uint) -> ~str
 	}
 	else
 	{
-		s.to_unique()
+		s.to_owned()
 	}
 }
 

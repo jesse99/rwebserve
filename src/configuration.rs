@@ -1,5 +1,6 @@
 //! Types and functions used to configure rwebserve.
 //use mustache::*;
+use core::path::{GenericPath};
 use std::base64::*;
 
 /// Configuration information for the web server.
@@ -144,7 +145,7 @@ pub impl Body : ToStr
 /// * context: new entries will often be added. If template is not actually a template file empty the context.
 /// 
 /// After the function returns a base-path entry is added to the response.context with the url to the directory containing the template file.
-pub type ResponseHandler = fn~ (config: &connection::ConnConfig, request: &Request, response: &Response) -> Response;
+pub type ResponseHandler = fn~ (config: &connection::ConnConfig, request: &Request, response: Response) -> Response;
 
 /// Returns true if the file at path should be treated as a mustache template.
 pub type IsTemplateFile = fn~ (config: &connection::ConnConfig, path: &str) -> bool;
@@ -180,7 +181,7 @@ pub fn initialize_config() -> Config
 		hosts: ~[~""],
 		port: 80_u16,
 		server_info: ~"",
-		resources_root: path::from_str(~""),
+		resources_root: GenericPath::from_str(~""),
 		routes: ~[],
 		views: ~[],
 		static_handler: static_view,
@@ -233,9 +234,9 @@ pub fn is_valid_rsrc(path: &Path) -> bool
 
 // Default config.missing handler. Assumes that there is a "not-found.html"
 // file at the resource root.
-pub fn missing_view(_config: &connection::ConnConfig, _request: &Request, response: &Response) -> Response
+pub fn missing_view(_config: &connection::ConnConfig, _request: &Request, response: Response) -> Response
 {
-	Response {template: ~"not-found.html", ..*response}
+	Response {template: ~"not-found.html", ..response}
 }
 
 // Default config.static view handler.
@@ -245,26 +246,26 @@ pub fn missing_view(_config: &connection::ConnConfig, _request: &Request, respon
 // 1) It's expected that expanding a non-template file is not going to be a performance problem.
 // 2) Using files like *.html.mustache screws up syntax highlighting in editors.
 // 3) Users can install a new is_template closure to do something different.
-pub fn static_view(config: &connection::ConnConfig, _request: &Request, response: &Response) -> Response
+pub fn static_view(config: &connection::ConnConfig, _request: &Request, response: Response) -> Response
 {
 	let path = mustache::compile_str("{{request-path}}").render_data(mustache::Map(response.context));
 	//let path = mustache::render_str("{{request-path}}", response.context);
-	if config.is_template(config, path)
+	if (config.is_template)(config, path)
 	{
-		Response {body: StringBody(@~""), template: path, context: std::map::HashMap(), ..*response}
+		Response {body: StringBody(@~""), template: path, context: std::map::HashMap(), ..response}
 	}
 	else
 	{
 		let path = utils::url_to_path(&config.resources_root, path);
-		let contents = config.load_rsrc(&path);
+		let contents = (config.load_rsrc)(&path);
 		if contents.is_ok()
 		{
-			Response {body: BinaryBody(@result::unwrap(contents)), template: ~"", context: std::map::HashMap(), ..*response}
+			Response {body: BinaryBody(@result::unwrap(contents)), template: ~"", context: std::map::HashMap(), ..response}
 		}
 		else
 		{
 			error!("failed to open %s: %s", path.to_str(), contents.get_err());
-			Response {template: ~"not-found.html", ..*response}
+			Response {template: ~"not-found.html", ..response}
 		}
 	}
 }

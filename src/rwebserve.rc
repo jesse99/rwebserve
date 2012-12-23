@@ -23,8 +23,16 @@ pub mod connection;
 pub mod http_parser;
 pub mod imap;
 pub mod request;
-pub mod rwebserve;
 pub mod server;
 pub mod sse;
 pub mod uri_template;
 pub mod utils;
+
+// Public API for rwebserve.
+use std::map::*;
+use Path = path::Path;
+
+pub use configuration::*;
+pub use imap::*;
+pub use server::*;
+pub use sse::*;
