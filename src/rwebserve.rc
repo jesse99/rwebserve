@@ -27,6 +27,7 @@ pub mod server;
 pub mod sse;
 pub mod uri_template;
 pub mod utils;
+mod bug4260;
 
 // Public API for rwebserve.
 use std::map::*;

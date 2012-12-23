@@ -2,10 +2,11 @@ use io::{WriterUtil};
 
 //use rparse::rparse::*;
 use rparse::{identifier, decimal_number, octal_number, hex_number, float_number, char_literal, string_literal, comment, line_comment};
-use rparse::{ParseStatus, ParseFailed, CharParsers, GenericParsers, Combinators,
-	match1, StringParsers, seq3, seq5, seq7, seq9};
+use rparse::{ParseStatus, ParseFailed, CharParsers, StringParsers, GenericParsers, Combinators};
 use rparse::{EOT, is_alpha, is_digit, is_alphanum, is_print, is_whitespace};
 use rparse::{Parser, State, Status, Succeeded, Failed};
+
+use bug4260::{match1, seq3, seq5, seq7, seq9};
 
 // This needs to be a sendable type.
 pub struct HttpRequest
