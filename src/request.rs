@@ -11,8 +11,9 @@ pub fn process_request(config: &connection::ConnConfig, request: HttpRequest, lo
 	
 	let version = fmt!("%d.%d", request.major_version, request.minor_version);
 	let (path, params) = parse_url(request.url);
-	let request = Request {version: version, method:copy  request.method, local_addr: local_addr.to_owned(), remote_addr: remote_addr.to_owned(), 
-		path: path, matches: std::map::HashMap(), params: params, headers: utils::to_boxed_str_hash(request.headers), body: copy request.body};	// TODO: icky copy
+	let HttpRequest {body: move body, method: move method, headers: move headers, _} = request;
+	let request = Request {version: version, method:copy  method, local_addr: local_addr.to_owned(), remote_addr: remote_addr.to_owned(), 
+		path: path, matches: std::map::HashMap(), params: params, headers: utils::to_boxed_str_hash(headers), body: body};
 	let types = if request.headers.contains_key(@~"accept") {str::split_char(*request.headers.get(@~"accept"), ',')} else {~[~"text/html"]};
 	let (response, body) = get_body(config, &request, types);
 	

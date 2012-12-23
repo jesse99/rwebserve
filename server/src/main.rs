@@ -1,14 +1,15 @@
+use core::path::{GenericPath};
 use io::WriterUtil;
 use path::{Path};
 //use mustache::*;
 use std::getopts::*;
 use std::map::HashMap;
-use server = rwebserve::rwebserve;
-use server::ImmutableMap;
+use server = rwebserve;
+use rwebserve::ImmutableMap;
 use ConnConfig = rwebserve::connection::ConnConfig;
-use Request = rwebserve::rwebserve::Request;
-use Response = rwebserve::rwebserve::Response;
-use ResponseHandler = rwebserve::rwebserve::ResponseHandler;
+use Request = rwebserve::Request;
+use Response = rwebserve::Response;
+use ResponseHandler = rwebserve::ResponseHandler;
 
 type Options = {root: Path, admin: bool};
 
@@ -57,12 +58,12 @@ fn parse_command_line(args: &[~str]) -> Options
 		result::Ok(m)	=> copy(m),
 		result::Err(f)	=> {io::stderr().write_line(fail_str(f)); libc::exit(1_i32)}
 	};
-	if opt_present(matched, ~"h") || opt_present(matched, ~"help")
+	if opt_present(&matched, ~"h") || opt_present(&matched, ~"help")
 	{
 		print_usage();
 		libc::exit(0_i32);
 	}
-	else if opt_present(matched, ~"version")
+	else if opt_present(&matched, ~"version")
 	{
 		io::println(fmt!("server %s", get_version()));
 		libc::exit(0_i32);
@@ -72,10 +73,10 @@ fn parse_command_line(args: &[~str]) -> Options
 		io::stderr().write_line("Positional arguments are not allowed.");
 		libc::exit(1_i32);
 	}
-	{root: path::from_str(opt_str(matched, ~"root")), admin: opt_present(matched, ~"admin")}
+	{root: GenericPath::from_str(opt_str(&matched, ~"root")), admin: opt_present(&matched, ~"admin")}
 }
 
-fn validate_options(options: Options)
+fn validate_options(options: &Options)
 {
 	if !os::path_is_dir(&options.root)
 	{
@@ -95,16 +96,16 @@ fn process_command_line(args: ~[~str]) -> ~str
 	str::slice(args[1], str::len("--root="), str::len(args[1]))
 }
 
-fn home_view(_config: &ConnConfig, options: &Options, _request: &Request, response: &Response) -> Response
+fn home_view(_config: &ConnConfig, options: &Options, _request: &Request, response: Response) -> Response
 {
 	response.context.insert(@~"admin", mustache::Bool(options.admin));
-	Response {template: ~"home.html", ..*response}
+	Response {template: ~"home.html", ..response}
 }
 
-fn greeting_view(_config: &ConnConfig, request: &Request, response: &Response) -> Response
+fn greeting_view(_config: &ConnConfig, request: &Request, response: Response) -> Response
 {
 	response.context.insert(@~"user-name", mustache::Str(request.matches.get(@~"name")));
-	Response {template: ~"hello.html", ..*response}
+	Response {template: ~"hello.html", ..response}
 }
 
 enum StateMesg
@@ -118,7 +119,7 @@ type StateChan = oldcomm::Chan<StateMesg>;
 
 // Like spawn_listener except that it supports custom modes. This allows code that blocks
 // within a foreign function to avoid blocking other tasks which may be on its thread.
-fn spawn_moded_listener<A: Send>(mode: task::SchedMode, +f: fn~(oldcomm::Port<A>)) -> oldcomm::Chan<A>
+fn spawn_moded_listener<A: Owned>(mode: task::SchedMode, +f: fn~(oldcomm::Port<A>)) -> oldcomm::Chan<A>
 {
 	let setup_po = oldcomm::Port();
 	let setup_ch = oldcomm::Chan(&setup_po);
@@ -181,15 +182,14 @@ fn uptime_sse(registrar: StateChan, request: &Request, push: server::PushChan) -
 {
 	let seconds = *request.params.get(@~"units") == ~"s";
 	
-	do task::spawn_listener
-	|control_port: server::ControlPort|
+	do spawn_moded_listener(task::ThreadPerCore) |control_port: server::ControlPort|
 	{
 		info!("starting uptime sse stream");
 		let notify_port = oldcomm::Port();
 		let notify_chan = oldcomm::Chan(&notify_port);
 		
 		let key = fmt!("uptime %?", ptr::addr_of(&notify_port));
-		oldcomm::send(registrar, AddListener(key, notify_chan));
+		oldcomm::send(registrar, AddListener(copy key, notify_chan));
 		
 		loop
 		{
@@ -228,7 +228,7 @@ fn uptime_sse(registrar: StateChan, request: &Request, push: server::PushChan) -
 fn main()
 {
 	let options = parse_command_line(os::args());
-	validate_options(options);
+	validate_options(&options);
 	
 	let registrar = manage_state();
 	
@@ -240,15 +240,15 @@ fn main()
 	// TODO: Shouldn't need all of these damned explicit types but rustc currently
 	// has problems with type inference woth closures and borrowed pointers.
 	let greeting_v: ResponseHandler = greeting_view;
-	let home_v: ResponseHandler = |config: &ConnConfig, request: &Request, response: &Response, copy options| {home_view(config, &options, request, response)};
-	let shutdown_v: ResponseHandler = |_config: &ConnConfig, _request: &Request, _response: &Response| {info!("received shutdown request"); libc::exit(0)};
+	let home_v: ResponseHandler = |config: &ConnConfig, request: &Request, response: Response, copy options| {home_view(config, &options, request, response)};
+	let shutdown_v: ResponseHandler = |_config: &ConnConfig, _request: &Request, _response: Response| {info!("received shutdown request"); libc::exit(0)};
 	
 	let config = server::Config
 	{
 		hosts: ~[~"localhost", ~"10.6.210.132"],
 		port: 8088_u16,
 		server_info: ~"sample rrest server " + get_version(),
-		resources_root: options.root,
+		resources_root: copy options.root,
 		routes: ~[
 			(~"GET", ~"/", ~"home"),
 			(~"GET", ~"/shutdown", ~"shutdown"),		// TODO: enable this via debug cfg (or maybe via a command line option)
