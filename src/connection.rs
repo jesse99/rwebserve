@@ -57,9 +57,9 @@ priv fn read_requests(remote_addr: &str, fd: libc::c_int, poke: oldcomm::Chan<op
 			{
 				result::Ok(ref request) =>
 				{
-					if request.headers.contains_key(~"content-length")
+					if request.headers.contains_key(&~"content-length")
 					{
-						let body = read_body(sock, request.headers.get(~"content-length"));
+						let body = read_body(sock, request.headers.get(&~"content-length"));
 						if str::is_not_empty(body)
 						{
 							oldcomm::send(poke, option::Some(http_parser::HttpRequest {body: body, ..copy *request}));

@@ -33,6 +33,20 @@ pub fn linear_map_from_vector<K: cmp::Eq hash::Hash to_bytes::IterBytes, V: Copy
 	map
 }
 
+pub fn vector_from_linear_map<K: cmp::Eq hash::Hash to_bytes::IterBytes Copy, V: Copy>
+	(map: &LinearMap<K, V>) -> ~[(K, V)]
+{
+	let mut vector = ~[];
+	vec::reserve(&mut vector, map.len());
+	
+	for map.each |key, value|
+	{
+		vector.push((copy *key, copy *value));
+	}
+	
+	vector
+}
+
 pub fn dump_string(title: ~str, text: ~str)
 {
 	io::println(fmt!("%s has %? bytes:", title, str::len(text)));

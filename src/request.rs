@@ -14,7 +14,7 @@ pub fn process_request(config: &Config, tasks: &mut LinearMap<~str, ControlChan>
 	let (path, params) = parse_url(request.url);
 	let HttpRequest {body: move body, method: move method, headers: move headers, _} = request;
 	let request = Request {version: version, method:copy  method, local_addr: local_addr.to_owned(), remote_addr: remote_addr.to_owned(), 
-		path: path, matches: LinearMap(), params: params, headers: utils::linear_map_from_vector(headers), body: body};
+		path: path, matches: LinearMap(), params: params, headers: headers, body: body};
 	let types = if request.headers.contains_key(@~"accept") {str::split_char(request.headers.get(@~"accept"), ',')} else {~[~"text/html"]};
 	let (response, body) = get_body(config, tasks, push_data, &request, types);
 	
@@ -25,7 +25,7 @@ pub fn process_request(config: &Config, tasks: &mut LinearMap<~str, ControlChan>
 	(header, body)
 }
 
-priv fn parse_url(url: &str) -> (~str, IMap<@~str, @~str>)
+priv fn parse_url(url: &str) -> (~str, LinearMap<~str, ~str>)
 {
 	match str::find_char(url, '?')
 	{
@@ -34,37 +34,36 @@ priv fn parse_url(url: &str) -> (~str, IMap<@~str, @~str>)
 			let query = str::slice(url, i+1, str::len(url));
 			let parts = str::split_char(query, '&');
 			
-			let params = do vec::map(parts)
-			|p|
+			let params = do vec::map(parts) |p|
 			{
 				match str::find_char(*p, '=')
 				{
 					option::Some(i) =>
 					{
-						~[@p.slice(0, i), @p.slice(i+1, p.len())]
+						~[p.slice(0, i), p.slice(i+1, p.len())]
 					}
 					option::None =>
 					{
-						~[@p.to_owned()]		// bad field
+						~[p.to_owned()]		// bad field
 					}
 				}
 			};
 			
 			if do vec::all(params) |p| {vec::len(*p) == 2}
 			{
-				(str::slice(url, 0, i), do vec::map(params) |p| {(p[0], p[1])})
+				(str::slice(url, 0, i), utils::linear_map_from_vector(do vec::map(params) |p| {(copy p[0], copy p[1])}))
 			}
 			else
 			{
 				// It's not a valid query string so we'll just let the server handle it.
 				// Presumbably it won't match any routes so we'll get an error then.
 				error!("invalid query string");
-				(url.to_owned(), ~[])
+				(url.to_owned(), LinearMap())
 			}
 		}
 		option::None =>
 		{
-			(url.to_owned(), ~[])
+			(url.to_owned(), LinearMap())
 		}
 	}
 }
@@ -418,13 +417,13 @@ fn err_loader(path: &Path) -> result::Result<~[u8], ~str>
 #[cfg(test)]
 fn make_request(url: ~str, mime_type: ~str) -> HttpRequest
 {
-	let headers = ~[		// http_parser lower cases header names so we do too
+	let headers = utils::linear_map_from_vector(~[		// http_parser lower cases header names so we do too
 		(~"host", ~"localhost:8080"),
 		(~"user-agent", ~"Mozilla/5.0"),
 		(~"accept", copy mime_type),
 		(~"accept-Language", ~"en-us,en"),
 		(~"accept-encoding", ~"gzip, deflate"),
-		(~"connection", ~"keep-alive")];
+		(~"connection", ~"keep-alive")]);
 	HttpRequest {method: ~"GET", major_version: 1, minor_version: 1, url: url, headers: headers, body: ~""}
 }
 
@@ -686,17 +685,17 @@ fn query_strings()
 {
 	let (path, params) = parse_url(~"/some/url");
 	assert utils::check_strs(path, ~"/some/url");
-	assert utils::check_vectors(params, ~[]);
+	assert utils::check_vectors(utils::vector_from_linear_map(&params), ~[]);
 	
 	let (path, params) = parse_url(~"/some/url?badness");
 	assert utils::check_strs(path, ~"/some/url?badness");
-	assert utils::check_vectors(params, ~[]);
+	assert utils::check_vectors(utils::vector_from_linear_map(&params), ~[]);
 	
 	let (path, params) = parse_url(~"/some?name=value");
 	assert utils::check_strs(path, ~"/some");
-	assert utils::check_vectors(params, ~[(@~"name", @~"value")]);
+	assert utils::check_vectors(utils::vector_from_linear_map(&params), ~[(~"name", ~"value")]);
 	
 	let (path, params) = parse_url(~"/some?name=value&foo=bar");
 	assert utils::check_strs(path, ~"/some");
-	assert utils::check_vectors(params, ~[(@~"name", @~"value"), (@~"foo", @~"bar")]);
+	assert utils::check_vectors(utils::vector_from_linear_map(&params), ~[(~"name", ~"value"), (~"foo", ~"bar")]);
 }

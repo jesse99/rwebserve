@@ -6,7 +6,6 @@ use std::getopts::*;
 use std::map::HashMap;
 use server = rwebserve;
 use rwebserve::{Config, Request, Response, ResponseHandler, Route, linear_map_from_vector};
-use rwebserve::ImmutableMap;
 
 type Options = {root: Path, admin: bool};
 
@@ -177,7 +176,7 @@ fn manage_state() -> StateChan
 // this case) out to the client.
 fn uptime_sse(registrar: StateChan, request: &Request, push: server::PushChan) -> server::ControlChan
 {
-	let seconds = *request.params.get(@~"units") == ~"s";
+	let seconds = request.params.get(&~"units") == ~"s";
 	
 	do spawn_moded_listener(task::ThreadPerCore) |control_port: server::ControlPort|
 	{

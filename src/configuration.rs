@@ -63,7 +63,7 @@ pub struct Request
 	pub remote_addr: ~str,
 	pub path: ~str,
 	pub matches: LinearMap<~str, ~str>,
-	pub params: IMap<@~str, @~str>,
+	pub params: LinearMap<~str, ~str>,
 	pub headers: LinearMap<~str, ~str>,
 	pub body: ~str,
 	

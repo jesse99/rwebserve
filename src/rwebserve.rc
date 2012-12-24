@@ -21,7 +21,6 @@ extern mod socket (name = "socket", vers = "0.1");
 pub mod configuration; 
 pub mod connection;
 pub mod http_parser;
-pub mod imap;
 pub mod request;
 pub mod server;
 pub mod sse;
@@ -33,7 +32,6 @@ mod bug4260;
 use Path = path::Path;
 
 pub use configuration::*;
-pub use imap::*;
 pub use server::*;
 pub use sse::*;
 pub use utils::{linear_map_from_vector};
