@@ -1,5 +1,6 @@
 //! Misc functions used internally.
 use core::path::{GenericPath};
+use core::send_map::linear::{LinearMap, linear_map_with_capacity};
 use io::WriterUtil;
 
 // The url should be the path component of an URL. It will usually be
@@ -19,26 +20,17 @@ pub fn url_to_path(root: &Path, url: &str) -> Path
 	root.push_rel(&path)
 }
 
-pub fn boxed_hash_from_strs<V: Copy>(items: &[(~str, V)]) -> HashMap<@~str, V>
+pub fn linear_map_from_vector<K: cmp::Eq hash::Hash to_bytes::IterBytes, V: Copy>
+	(vector: &[(K, V)]) -> LinearMap<K, V>
 {
-	let table = HashMap();
-	for items.each
-	|item|
+	let mut map = linear_map_with_capacity(vector.len());
+	
+	for vector.each |&(key, value)|
 	{
-		table.insert(@item.first(), item.second());
+		map.insert(key, value);
 	}
-	table
-}
-
-pub fn to_boxed_str_hash(items: &[(~str, ~str)]) -> HashMap<@~str, @~str>
-{
-	let table = HashMap();
-	for items.each
-	|item|
-	{
-		table.insert(@item.first(), @item.second());
-	}
-	table
+	
+	map
 }
 
 pub fn dump_string(title: ~str, text: ~str)

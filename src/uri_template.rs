@@ -46,17 +46,17 @@ pub fn compile(template: &str) -> ~[Component]
 // Components should be the result of a call to compile.
 // Result will be non-empty iff all of the components in path match the specified components.
 // On matches result will have keys matching any variable names as well as a "fullpath" key matching the entire path.
-pub fn match_template(path: &str, components: &[Component]) -> HashMap<@~str, @~str>
+pub fn match_template(path: &str, components: &[Component]) -> LinearMap<~str, ~str>
 {
 	let parts = str::split_char_nonempty(path, '/');
 	
 	let mut i = 0u;
-	let result = std::map::HashMap();
+	let mut result = LinearMap();
 	while i < vec::len(components)
 	{
 		if i == vec::len(parts)
 		{
-			return std::map::HashMap();			// ran out of parts to match
+			return LinearMap();			// ran out of parts to match
 		}
 		
 		match components[i]
@@ -65,17 +65,17 @@ pub fn match_template(path: &str, components: &[Component]) -> HashMap<@~str, @~
 			{
 				if parts[i] != *s
 				{
-					return std::map::HashMap();	// match failed
+					return LinearMap();	// match failed
 				}
 			}
 			Variable(copy s) =>
 			{
-				result.insert(@s, @copy parts[i]);
+				result.insert(s, copy parts[i]);
 			}
 			Trailer(copy s) =>
 			{
 				let path = vec::slice(parts, i, vec::len(parts));
-				result.insert(@s, @str::connect(path, ~"/"));
+				result.insert(s, str::connect(path, ~"/"));
 				i = vec::len(parts) - 1u;
 			}
 		}
@@ -84,10 +84,10 @@ pub fn match_template(path: &str, components: &[Component]) -> HashMap<@~str, @~
 	
 	if i != vec::len(parts)
 	{
-		return std::map::HashMap();				// not all parts were matched
+		return LinearMap();				// not all parts were matched
 	}
 	
-	result.insert(@~"fullpath", @path.to_owned());
+	result.insert(~"fullpath", path.to_owned());
 	return result;
 }
 
@@ -163,12 +163,12 @@ fn match_root()
 	let template = ~"/";
 	let components = compile(template);
 	let m = match_template(path, components);
-	assert m.get(@~"fullpath") == @~"/";
-	assert m.size() == 1u;
+	assert m.get(@~"fullpath") == ~"/";
+	assert m.len() == 1u;
 	
 	let path = ~"/foo";
 	let m = match_template(path, components);
-	assert m.size() == 0u;
+	assert m.len() == 0u;
 }
 
 #[test]
@@ -179,8 +179,8 @@ fn match_literals()
 	let components = compile(template);
 	let m = match_template(path, components);
 	
-	assert m.get(@~"fullpath") == @~"/foo/bar/baz";
-	assert m.size() == 1u;
+	assert m.get(@~"fullpath") == ~"/foo/bar/baz";
+	assert m.len() == 1u;
 }
 
 #[test]
@@ -190,13 +190,13 @@ fn match_non_literals()
 	let template = ~"/foo/bar/baz/flob";
 	let components = compile(template);
 	let m = match_template(path, components);
-	assert m.size() == 0u;
+	assert m.len() == 0u;
 	
 	let path = ~"/foo/bar/baz";
 	let template = ~"/foo";
 	let components = compile(template);
 	let m = match_template(path, components);
-	assert m.size() == 0u;
+	assert m.len() == 0u;
 }
 
 #[test]
@@ -207,10 +207,10 @@ fn match_variables()
 	let components = compile(template);
 	let m = match_template(path, components);
 	
-	assert m.get(@~"fullpath") == @~"/foo/alpha/beta";
-	assert m.get(@~"bar") == @~"alpha";
-	assert m.get(@~"baz") == @~"beta";
-	assert m.size() == 3u;
+	assert m.get(@~"fullpath") == ~"/foo/alpha/beta";
+	assert m.get(@~"bar") == ~"alpha";
+	assert m.get(@~"baz") == ~"beta";
+	assert m.len() == 3u;
 }
 
 #[test]
@@ -221,9 +221,9 @@ fn match_paths()
 	let components = compile(template);
 	let m = match_template(path, components);
 	
-	assert m.get(@~"fullpath") == @~"/foo/alpha/beta";
-	assert m.get(@~"path") == @~"alpha/beta";
-	assert m.size() == 2u;
+	assert m.get(@~"fullpath") == ~"/foo/alpha/beta";
+	assert m.get(@~"path") == ~"alpha/beta";
+	assert m.len() == 2u;
 }
 
 #[test]
@@ -235,5 +235,5 @@ fn match_empty_path()
 	let components = compile(template);
 	let m = match_template(path, components);
 	
-	assert m.size() == 0u;
+	assert m.len() == 0u;
 }

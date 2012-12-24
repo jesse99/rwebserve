@@ -5,11 +5,8 @@ use path::{Path};
 use std::getopts::*;
 use std::map::HashMap;
 use server = rwebserve;
+use rwebserve::{Config, Request, Response, ResponseHandler, Route, linear_map_from_vector};
 use rwebserve::ImmutableMap;
-use ConnConfig = rwebserve::connection::ConnConfig;
-use Request = rwebserve::Request;
-use Response = rwebserve::Response;
-use ResponseHandler = rwebserve::ResponseHandler;
 
 type Options = {root: Path, admin: bool};
 
@@ -96,15 +93,15 @@ fn process_command_line(args: ~[~str]) -> ~str
 	str::slice(args[1], str::len("--root="), str::len(args[1]))
 }
 
-fn home_view(_config: &ConnConfig, options: &Options, _request: &Request, response: Response) -> Response
+fn home_view(_config: &Config, options: &Options, _request: &Request, response: Response) -> Response
 {
 	response.context.insert(@~"admin", mustache::Bool(options.admin));
 	Response {template: ~"home.html", ..response}
 }
 
-fn greeting_view(_config: &ConnConfig, request: &Request, response: Response) -> Response
+fn greeting_view(_config: &Config, request: &Request, response: Response) -> Response
 {
-	response.context.insert(@~"user-name", mustache::Str(request.matches.get(@~"name")));
+	response.context.insert(@~"user-name", mustache::Str(@request.matches.get(@~"name")));
 	Response {template: ~"hello.html", ..response}
 }
 
@@ -235,13 +232,13 @@ fn main()
 	// This is an example of how additional information can be communicated to
 	// a view handler (in this case we're only communicating options.admin so
 	// using settings would be simpler).
-	let up: server::OpenSse = |_config: &ConnConfig, request: &Request, push| {uptime_sse(registrar, request, push)};
+	let up: server::OpenSse = |_config: &Config, request: &Request, push| {uptime_sse(registrar, request, push)};
 	
 	// TODO: Shouldn't need all of these damned explicit types but rustc currently
 	// has problems with type inference woth closures and borrowed pointers.
 	let greeting_v: ResponseHandler = greeting_view;
-	let home_v: ResponseHandler = |config: &ConnConfig, request: &Request, response: Response, copy options| {home_view(config, &options, request, response)};
-	let shutdown_v: ResponseHandler = |_config: &ConnConfig, _request: &Request, _response: Response| {info!("received shutdown request"); libc::exit(0)};
+	let home_v: ResponseHandler = |config: &Config, request: &Request, response: Response, copy options| {home_view(config, &options, request, response)};
+	let shutdown_v: ResponseHandler = |_config: &Config, _request: &Request, _response: Response| {info!("received shutdown request"); libc::exit(0)};
 	
 	let config = server::Config
 	{
@@ -250,17 +247,17 @@ fn main()
 		server_info: ~"sample rrest server " + get_version(),
 		resources_root: copy options.root,
 		routes: ~[
-			(~"GET", ~"/", ~"home"),
-			(~"GET", ~"/shutdown", ~"shutdown"),		// TODO: enable this via debug cfg (or maybe via a command line option)
-			(~"GET", ~"/hello/{name}", ~"greeting"),
+			Route(~"home", ~"GET", ~"/"),
+			Route(~"shutdown", ~"GET", ~"/shutdown"),		// TODO: enable this via debug cfg (or maybe via a command line option)
+			Route(~"greeting", ~"GET", ~"/hello/{name}"),
 		],
-		views: ~[
+		views: linear_map_from_vector(~[
 			(~"greeting", greeting_v),
 			(~"home",  home_v),
 			(~"shutdown",  shutdown_v),
-		],
-		sse: ~[(~"/uptime", up)],
-		settings: ~[(~"debug",  ~"true")],
+		]),
+		sse: linear_map_from_vector(~[(~"/uptime", up)]),
+		settings: linear_map_from_vector(~[(~"debug",  ~"true")]),
 		..server::initialize_config()
 	};
 	

@@ -1,54 +1,8 @@
 //! The module responsible for communication using a persistent connection to a client.
 //use socket::*;
 use core::path::{GenericPath};
+use core::send_map::linear::{LinearMap};
 use request::{process_request, make_header_and_body};
-
-// Like config except that it is connection specific, uses hashmaps, and adds some fields for sse.
-pub struct ConnConfig
-{
-	pub hosts: ~[~str],
-	pub port: u16,
-	pub server_info: ~str,
-	pub resources_root: Path,
-	pub route_list: ~[Route],
-	pub views_table: HashMap<@~str, ResponseHandler>,
-	pub static_handler: ResponseHandler,
-	pub is_template: IsTemplateFile,
-	pub sse_openers: HashMap<@~str, OpenSse>,		// key is a GET path
-	pub sse_tasks: HashMap<@~str, ControlChan>,		// key is a GET path
-	pub sse_push: oldcomm::Chan<~str>,
-	pub missing: ResponseHandler,
-	pub static_type_table: HashMap<@~str, @~str>,
-	pub read_error: ~str,
-	pub load_rsrc: RsrcLoader,
-	pub valid_rsrc: RsrcExists,
-	pub settings: HashMap<@~str, @~str>,
-	
-	drop {}
-}
-
-pub fn config_to_conn(config: &Config, push: oldcomm::Chan<~str>) -> ConnConfig
-{
-	ConnConfig {
-		hosts: copy config.hosts,
-		port: config.port,
-		server_info: copy config.server_info,
-		resources_root: copy config.resources_root,
-		route_list: vec::map(config.routes, to_route),
-		views_table: utils::boxed_hash_from_strs(config.views),
-		static_handler: copy config.static_handler,
-		is_template: copy config.is_template,
-		sse_openers: utils::boxed_hash_from_strs(config.sse),
-		sse_tasks: std::map::HashMap(),
-		sse_push: push,
-		missing: copy config.missing,
-		static_type_table: utils::to_boxed_str_hash(config.static_types),
-		read_error: copy config.read_error,
-		load_rsrc: copy config.load_rsrc,
-		valid_rsrc: copy config.valid_rsrc,
-		settings: utils::to_boxed_str_hash(config.settings),
-	}
-}
 
 // TODO: probably want to use task::unsupervise
 pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: &str, remote_addr: &str)
@@ -59,18 +13,11 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: &str, rem
 	let sse_chan = oldcomm::Chan(&sse_port);
 	let sock = @socket::socket::socket_handle(fd);
 	
-	let iconfig = config_to_conn(config, sse_chan);
-	let err = validate_config(&iconfig);
-	if str::is_not_empty(err)
-	{
-		error!("Invalid config: %s", err);
-		fail;
-	}
-	
 	// read_requests needs to run on its own thread so it doesn't block this task. 
 	let ra = remote_addr.to_owned();
 	do task::spawn_sched(task::SingleThreaded) {read_requests(ra, fd, request_chan);}
 	
+	let mut sse_tasks = LinearMap();
 	loop
 	{
 		debug!("-----------------------------------------------------------");
@@ -78,17 +25,17 @@ pub fn handle_connection(config: &Config, fd: libc::c_int, local_addr: &str, rem
 		{
 			either::Left(option::Some(move request)) =>
 			{
-				let (header, body) = process_request(&iconfig, request, local_addr, remote_addr);
+				let (header, body) = process_request(config, &mut sse_tasks, sse_chan, request, local_addr, remote_addr);
 				write_response(sock, header, body);
 			}
 			either::Left(option::None) =>
 			{
-				close_sses(&iconfig);
+				close_sses(&sse_tasks);
 				break;
 			}
 			either::Right(move body) =>
 			{
-				let response = make_response(&iconfig);
+				let response = make_response(config);
 				let (_, body) = make_header_and_body(&response, StringBody(@body));
 				write_response(sock, ~"", body);
 			}
@@ -282,7 +229,7 @@ priv fn write_response(sock: @socket::socket::socket_handle, header: ~str, body:
 	write_body(sock, &body);
 }
 
-priv fn validate_config(config: &ConnConfig) -> ~str
+priv fn validate_config(config: &Config) -> ~str
 {
 	let mut errors = ~[];
 	
@@ -320,8 +267,7 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 	}
 	
 	let mut names = ~[];
-	for vec::each(~[~"forbidden.html", ~"home.html", ~"not-found.html", ~"not-supported.html"])
-	|name|
+	for vec::each(~[~"forbidden.html", ~"home.html", ~"not-found.html", ~"not-supported.html"]) |name|
 	{
 		let path = config.resources_root.push(*name);
 		if !os::path_exists(&path)
@@ -341,10 +287,9 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 	
 	let mut missing_routes = ~[];
 	let mut routes = ~[];
-	for config.route_list.each()
-	|entry|
+	for config.routes.each |entry|
 	{
-		if !config.views_table.contains_key(@copy entry.route)
+		if !config.views.contains_key(&entry.route)
 		{
 			vec::push(&mut missing_routes, copy entry.route);
 		}
@@ -359,8 +304,7 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 	}
 	
 	let mut missing_views = ~[];
-	for config.views_table.each_key()
-	|route|
+	for config.views.each_key |route|
 	{
 		if !vec::contains(routes, route)
 		{
@@ -378,29 +322,6 @@ priv fn validate_config(config: &ConnConfig) -> ~str
 	return str::connect(errors, ~" ");
 }
 
-pub fn to_route(input: &(~str, ~str, ~str)) -> Route
-{
-	match *input
-	{
-		(copy method, copy template_str, copy route) =>
-		{
-			let i = str::find_char(template_str, '<');
-			let (template, mime_type) = if option::is_some(&i)
-				{
-					let j = str::find_char_from(template_str, '>', option::get(i)+1u);
-					assert option::is_some(&j);
-					(str::slice(template_str, 0u, option::get(i)), str::slice(template_str, option::get(i)+1u, option::get(j)))
-				}
-				else
-				{
-					(template_str, ~"text/html")
-				};
-			
-			Route {method: method, template: uri_template::compile(template), mime_type: mime_type, route: route}
-		}
-	}
-}
-
 #[test]
 fn routes_must_have_views()
 {
@@ -408,15 +329,14 @@ fn routes_must_have_views()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"server/html"),
-		routes: ~[(~"GET", ~"/", ~"home"), (~"GET", ~"/hello", ~"greeting"), (~"GET", ~"/goodbye", ~"farewell")],
-		views: ~[(~"home",  missing_view)],
+		routes: ~[
+			Route( ~"home", ~"GET", ~"/"),
+			Route(~"greeting", ~"GET", ~"/hello"),
+			Route(~"farewell", ~"GET", ~"/goodbye")],
+		views: utils::linear_map_from_vector(~[(~"home",  missing_view)]),
 		..initialize_config()};
 		
-	let sse_port = oldcomm::Port();
-	let sse_chan = oldcomm::Chan(&sse_port);
-	let iconfig = config_to_conn(&config, sse_chan);
-	
-	assert validate_config(&iconfig) == ~"No views for the following routes: farewell, greeting";
+	assert validate_config(&config) == ~"No views for the following routes: farewell, greeting";
 }
 
 #[test]
@@ -426,15 +346,11 @@ fn views_must_have_routes()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"server/html"),
-		routes: ~[(~"GET", ~"/", ~"home")],
-		views: ~[(~"home",  missing_view), (~"greeting",  missing_view), (~"goodbye",  missing_view)],
+		routes: ~[Route( ~"home", ~"GET", ~"/")],
+		views: utils::linear_map_from_vector(~[(~"home",  missing_view), (~"greeting",  missing_view), (~"goodbye",  missing_view)]),
 		..initialize_config()};
 		
-	let sse_port = oldcomm::Port();
-	let sse_chan = oldcomm::Chan(&sse_port);
-	let iconfig = config_to_conn(&config, sse_chan);
-	
-	assert validate_config(&iconfig) == ~"No routes for the following views: goodbye, greeting";
+	assert validate_config(&config) == ~"No routes for the following views: goodbye, greeting";
 }
 
 #[test]
@@ -444,14 +360,10 @@ fn root_must_have_required_files()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"/tmp"),
-		routes: ~[(~"GET", ~"/", ~"home")],
-		views: ~[(~"home",  missing_view)],
+		routes: ~[Route( ~"home", ~"GET", ~"/")],
+		views: utils::linear_map_from_vector(~[(~"home",  missing_view)]),
 		..initialize_config()};
 		
-	let sse_port = oldcomm::Port();
-	let sse_chan = oldcomm::Chan(&sse_port);
-	let iconfig = config_to_conn(&config, sse_chan);
-	
-	assert validate_config(&iconfig) == ~"Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";
+	assert validate_config(&config) == ~"Missing required files: forbidden.html, home.html, not-found.html, not-supported.html";
 }
 

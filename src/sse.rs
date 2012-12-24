@@ -7,7 +7,7 @@
 ///
 /// The hashmap contains the config settings. The PushChan allows the
 /// task to push data to the client.
-pub type OpenSse = fn~ (config: &connection::ConnConfig, request: &Request, channel: PushChan) -> ControlChan;
+pub type OpenSse = fn~ (config: &Config, request: &Request, channel: PushChan) -> ControlChan;
 
 /// The channel used by server tasks to send data to a client.
 ///
@@ -35,13 +35,13 @@ pub enum ControlEvent
 }
 
 // This is invoked when the client sends a GET on behalf of an event source.
-pub fn process_sse(config: &connection::ConnConfig, request: &Request) -> (Response, Body)
+pub fn process_sse(config: &Config, tasks: &mut LinearMap<~str, ControlChan>, push_data: PushChan, request: &Request) -> (Response, Body)
 {
 	let mut code = ~"200";
 	let mut mesg = ~"OK";
 	let mut mime = ~"text/event-stream; charset=utf-8";
 	
-	match config.sse_tasks.find(@copy request.path)
+	match tasks.find(&request.path)
 	{
 		option::Some(sse) =>
 		{
@@ -49,7 +49,7 @@ pub fn process_sse(config: &connection::ConnConfig, request: &Request) -> (Respo
 		}
 		option::None =>
 		{
-			if !OpenSse(config, request, config.sse_push)
+			if !OpenSse(config, tasks, request, push_data)
 			{
 				code = ~"404";
 				mesg = ~"Not Found";
@@ -58,22 +58,22 @@ pub fn process_sse(config: &connection::ConnConfig, request: &Request) -> (Respo
 		}
 	}
 	
-	let response = request::make_initial_response(config, code, mesg, mime, request);
-	response.headers.insert(@~"Transfer-Encoding", @~"chunked");
-	response.headers.insert(@~"Cache-Control", @~"no-cache");
+	let mut response = request::make_initial_response(config, code, mesg, mime, request);
+	response.headers.insert(~"Transfer-Encoding", ~"chunked");
+	response.headers.insert(~"Cache-Control", ~"no-cache");
 	(response, StringBody(@~"\n\n"))
 }
 
 // TODO: Chrome, at least, doesn't seem to close EventSources so we need to time these out.
-pub fn OpenSse(config: &connection::ConnConfig, request: &Request, push_data: PushChan) -> bool
+pub fn OpenSse(config: &Config, tasks: &mut LinearMap<~str, ControlChan>, request: &Request, push_data: PushChan) -> bool
 {
-	match config.sse_openers.find(@copy request.path)
+	match config.sse.find(@copy request.path)
 	{
 		option::Some(ref opener) =>
 		{
 			info!("opening sse for %s", request.path);
 			let sse = (*opener)(config, request, push_data);
-			config.sse_tasks.insert(@copy request.path, sse);
+			tasks.insert(copy request.path, sse);
 			true
 		}
 		option::None =>
@@ -84,19 +84,18 @@ pub fn OpenSse(config: &connection::ConnConfig, request: &Request, push_data: Pu
 	}
 }
 
-pub fn close_sses(config: &connection::ConnConfig)
+pub fn close_sses(tasks: &LinearMap<~str, ControlChan>)
 {
 	info!("closing all sse");
-	for config.sse_tasks.each_value
-	|control_ch|
+	for tasks.each |_path, control_ch|
 	{
-		oldcomm::send(control_ch, CloseEvent);
+		control_ch.send(CloseEvent);
 	};
 }
 
-pub fn make_response(config: &connection::ConnConfig) -> Response
+pub fn make_response(config: &Config) -> Response
 {
-	let headers = utils::to_boxed_str_hash(~[
+	let headers = utils::linear_map_from_vector(~[
 		(~"Cache-Control", ~"no-cache"),
 		(~"Content-Type", ~"text/event-stream; charset=utf-8"),
 		(~"Date", std::time::now_utc().rfc822()),

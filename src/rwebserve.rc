@@ -30,10 +30,10 @@ pub mod utils;
 mod bug4260;
 
 // Public API for rwebserve.
-use std::map::*;
 use Path = path::Path;
 
 pub use configuration::*;
 pub use imap::*;
 pub use server::*;
 pub use sse::*;
+pub use utils::{linear_map_from_vector};

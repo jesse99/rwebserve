@@ -1,11 +1,12 @@
 //! Handles an incoming request from a client connection and sends a response.
 use io::WriterUtil;
 use core::path::{GenericPath};
+use core::send_map::linear::{LinearMap};
 use http_parser::{HttpRequest};
 
 // TODO:
 // include last-modified and maybe etag
-pub fn process_request(config: &connection::ConnConfig, request: HttpRequest, local_addr: &str, remote_addr: &str) -> (~str, Body)
+pub fn process_request(config: &Config, tasks: &mut LinearMap<~str, ControlChan>, push_data: PushChan, request: HttpRequest, local_addr: &str, remote_addr: &str) -> (~str, Body)
 {
 	info!("Servicing %s for %s", request.method, utils::truncate_str(request.url, 80));
 	
@@ -13,9 +14,9 @@ pub fn process_request(config: &connection::ConnConfig, request: HttpRequest, lo
 	let (path, params) = parse_url(request.url);
 	let HttpRequest {body: move body, method: move method, headers: move headers, _} = request;
 	let request = Request {version: version, method:copy  method, local_addr: local_addr.to_owned(), remote_addr: remote_addr.to_owned(), 
-		path: path, matches: std::map::HashMap(), params: params, headers: utils::to_boxed_str_hash(headers), body: body};
-	let types = if request.headers.contains_key(@~"accept") {str::split_char(*request.headers.get(@~"accept"), ',')} else {~[~"text/html"]};
-	let (response, body) = get_body(config, &request, types);
+		path: path, matches: LinearMap(), params: params, headers: utils::linear_map_from_vector(headers), body: body};
+	let types = if request.headers.contains_key(@~"accept") {str::split_char(request.headers.get(@~"accept"), ',')} else {~[~"text/html"]};
+	let (response, body) = get_body(config, tasks, push_data, &request, types);
 	
 	let (header, body) = make_header_and_body(&response, body);
 	debug!("response header: %s", header);
@@ -68,17 +69,17 @@ priv fn parse_url(url: &str) -> (~str, IMap<@~str, @~str>)
 	}
 }
 
-pub fn make_initial_response(config: &connection::ConnConfig, status_code: ~str, status_mesg: ~str, mime_type: ~str, request: &Request) -> Response
+pub fn make_initial_response(config: &Config, status_code: ~str, status_mesg: ~str, mime_type: ~str, request: &Request) -> Response
 {
-	let headers = utils::to_boxed_str_hash(~[
+	let mut headers = utils::linear_map_from_vector(~[
 		(~"Content-Type", copy mime_type),
 		(~"Date", std::time::now_utc().rfc822()),
 		(~"Server", copy config.server_info),
 	]);
 	
-	if config.settings.contains_key(@~"debug") && config.settings.get(@~"debug") == @~"true"
+	if config.settings.contains_key(@~"debug") && config.settings.get(@~"debug") == ~"true"
 	{
-		headers.insert(@~"Cache-Control", @~"no-cache");
+		headers.insert(~"Cache-Control", ~"no-cache");
 	}
 	
 	let context = std::map::HashMap();
@@ -159,11 +160,11 @@ pub fn make_header_and_body(response: &Response, body: Body) -> (~str, Body)
 	)
 }
 
-priv fn get_body(config: &connection::ConnConfig, request: &Request, types: ~[~str]) -> (Response, Body)
+priv fn get_body(config: &Config, tasks: &mut LinearMap<~str, ControlChan>, push_data: PushChan, request: &Request, types: ~[~str]) -> (Response, Body)
 {
 	if vec::contains(types, &~"text/event-stream") 
 	{
-		process_sse(config, request)
+		process_sse(config, tasks, push_data, request)
 	}
 	else
 	{
@@ -184,13 +185,13 @@ priv fn get_body(config: &connection::ConnConfig, request: &Request, types: ~[~s
 	}
 }
 
-priv fn find_handler(config: &connection::ConnConfig, method: &str, request_path: &str, types: &[~str], version: &str) -> (~str, ~str, ~str, ResponseHandler, HashMap<@~str, @~str>)
+priv fn find_handler(config: &Config, method: &str, request_path: &str, types: &[~str], version: &str) -> (~str, ~str, ~str, ResponseHandler, LinearMap<~str, ~str>)
 {
 	let mut handler = option::None;
 	let mut status_code = ~"200";
 	let mut status_mesg = ~"OK";
 	let mut result_type = ~"text/html; charset=UTF-8";
-	let mut matches = std::map::HashMap();
+	let mut matches = LinearMap();
 	
 	// According to section 3.1 servers are supposed to accept new minor version editions.
 	if !str::starts_with(version, "1.")
@@ -232,17 +233,16 @@ priv fn find_handler(config: &connection::ConnConfig, method: &str, request_path
 	// Then look for the first matching route.
 	if option::is_none(&handler)
 	{
-		for vec::each(config.route_list)
-		|entry|
+		for vec::each(config.routes) |entry|
 		{
 			if str::eq_slice(entry.method, method)
 			{
 				let m = uri_template::match_template(request_path, entry.template);
-				if m.size() > 0u
+				if m.len() > 0u
 				{
 					if vec::contains(types, &entry.mime_type)
 					{
-						handler = option::Some(config.views_table.get(@copy entry.route));
+						handler = option::Some(config.views.get(&entry.route));
 						result_type = entry.mime_type + ~"; charset=UTF-8";
 						matches = m;
 						break;
@@ -268,7 +268,7 @@ priv fn find_handler(config: &connection::ConnConfig, method: &str, request_path
 	return (status_code, status_mesg, result_type, option::get(handler), matches);
 }
 
-priv fn load_template(config: &connection::ConnConfig, path: &Path) -> result::Result<@~str, ~str>
+priv fn load_template(config: &Config, path: &Path) -> result::Result<@~str, ~str>
 {
 	// {{ should be followed by }} (rust-mustache hangs if this is not the case).
 	fn match_curly_braces(text: &str) -> bool
@@ -306,7 +306,7 @@ priv fn load_template(config: &connection::ConnConfig, path: &Path) -> result::R
 	|template|
 	{
 		let template = str::from_bytes(template);
-		if !config.settings.contains_key(@~"debug") || config.settings.get(@~"debug") == @~"false" || match_curly_braces(template)
+		if !config.settings.contains_key(@~"debug") || config.settings.get(@~"debug") == ~"false" || match_curly_braces(template)
 		{
 			result::Ok(@template)
 		}
@@ -317,7 +317,7 @@ priv fn load_template(config: &connection::ConnConfig, path: &Path) -> result::R
 	}
 }
 
-priv fn process_template(config: &connection::ConnConfig, response: Response, request: &Request) -> (Response, Body)
+priv fn process_template(config: &Config, response: Response, request: &Request) -> (Response, Body)
 {
 	let path = utils::url_to_path(&config.resources_root, response.template);
 	let (response, body) =
@@ -369,7 +369,7 @@ priv fn url_dirname(path: &str) -> ~str
 	}
 }
 
-priv fn path_to_type(config: &connection::ConnConfig, path: &str) -> ~str
+priv fn path_to_type(config: &Config, path: &str) -> ~str
 {
 	let p: path::Path = GenericPath::from_str(path);
 	let extension: Option<~str> = p.filetype();
@@ -377,11 +377,11 @@ priv fn path_to_type(config: &connection::ConnConfig, path: &str) -> ~str
 	{
 		assert extension.get_ref().char_at(0) == '.';
 		
-		match config.static_type_table.find(@extension.get())
+		match config.static_types.find(&extension.get())
 		{
 			option::Some(v) =>
 			{
-				copy *v
+				copy v
 			}
 			option::None =>
 			{
@@ -398,7 +398,7 @@ priv fn path_to_type(config: &connection::ConnConfig, path: &str) -> ~str
 }
 
 #[cfg(test)]
-fn test_view(_config: &connection::ConnConfig, _request: &Request, response: Response) -> Response
+fn test_view(_config: &Config, _request: &Request, response: Response) -> Response
 {
 	Response {template: ~"test.html", ..response}
 }
@@ -435,17 +435,17 @@ fn html_route()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"server/html"),
-		routes: ~[(~"GET", ~"/foo/bar", ~"foo")],
-		views: ~[(~"foo",  test_view)],
+		routes: ~[Route(~"foo", ~"GET", ~"/foo/bar")],
+		views: utils::linear_map_from_vector(~[(~"foo",  test_view)]),
 		load_rsrc: null_loader
 		, .. initialize_config()};
 		
-	let eport = oldcomm::Port();
-	let ech = oldcomm::Chan(&eport);
-	let iconfig = connection::config_to_conn(&config, ech);
+	let mut tasks = LinearMap();
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
 	
 	let request = make_request(~"/foo/bar", ~"text/html");
-	let (_header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (_header, body) = process_request(&config, &mut tasks, sse_chan, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert body.to_str() == ~"server/html/test.html contents";
 }
@@ -457,17 +457,17 @@ fn route_with_bad_type()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"server/html"),
-		routes: ~[(~"GET", ~"/foo/bar", ~"foo")],
-		views: ~[(~"foo",  test_view)],
+		routes: ~[Route(~"foo", ~"GET", ~"/foo/bar")],
+		views: utils::linear_map_from_vector(~[(~"foo",  test_view)]),
 		load_rsrc: null_loader
 		, .. initialize_config()};
 		
-	let eport = oldcomm::Port();
-	let ech = oldcomm::Chan(&eport);
-	let iconfig = connection::config_to_conn(&config, ech);
-	
+	let mut tasks = LinearMap();
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
+		
 	let request = make_request(~"/foo/bar", ~"text/zzz");
-	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&config, &mut tasks, sse_chan, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("404 Not Found");
 	assert header.contains("Content-Type: text/html");
@@ -481,17 +481,17 @@ fn non_html_route()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"server/html"),
-		routes: ~[(~"GET", ~"/foo/bar<text/csv>", ~"foo")],
-		views: ~[(~"foo",  test_view)],
+		routes: ~[TypedRoute(~"foo", ~"GET", ~"/foo/bar", ~"text/csv")],
+		views: utils::linear_map_from_vector(~[(~"foo",  test_view)]),
 		load_rsrc: null_loader
 		, ..initialize_config()};
 		
-	let eport = oldcomm::Port();
-	let ech = oldcomm::Chan(&eport);
-	let iconfig = connection::config_to_conn(&config, ech);
-	
+	let mut tasks = LinearMap();
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
+		
 	let request = make_request(~"/foo/bar", ~"text/csv");
-	let (_header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (_header, body) = process_request(&config, &mut tasks, sse_chan, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert body.to_str() == ~"server/html/test.html contents";
 }
@@ -503,18 +503,18 @@ fn static_route()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"server/html"),
-		routes: ~[(~"GET", ~"/foo/bar", ~"foo")],
-		views: ~[(~"foo",  test_view)],
+		routes: ~[Route(~"foo", ~"GET", ~"/foo/bar")],
+		views: utils::linear_map_from_vector(~[(~"foo",  test_view)]),
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {true}
 		, ..initialize_config()};
 		
-	let eport = oldcomm::Port();
-	let ech = oldcomm::Chan(&eport);
-	let iconfig = connection::config_to_conn(&config, ech);
-	
+	let mut tasks = LinearMap();
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
+		
 	let request = make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg");
-	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&config, &mut tasks, sse_chan, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("Content-Type: image/jpeg");
 	match body
@@ -531,18 +531,18 @@ fn static_with_bad_type()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"server/html"),
-		routes: ~[(~"GET", ~"/foo/bar", ~"foo")],
-		views: ~[(~"foo",  test_view)],
+		routes: ~[Route(~"foo", ~"GET", ~"/foo/bar")],
+		views: utils::linear_map_from_vector(~[(~"foo",  test_view)]),
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {true}
 		, ..initialize_config()};
 		
-	let eport = oldcomm::Port();
-	let ech = oldcomm::Chan(&eport);
-	let iconfig = connection::config_to_conn(&config, ech);
-	
+	let mut tasks = LinearMap();
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
+		
 	let request = make_request(~"/foo/baz.jpg", ~"text/zzz");
-	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&config, &mut tasks, sse_chan, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert body.to_str() == ~"server/html/not-found.html contents";
@@ -555,18 +555,18 @@ fn bad_url()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"server/html"),
-		routes: ~[(~"GET", ~"/foo/bar", ~"foo")],
-		views: ~[(~"foo",  test_view)],
+		routes: ~[Route(~"foo", ~"GET", ~"/foo/bar")],
+		views: utils::linear_map_from_vector(~[(~"foo",  test_view)]),
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {false}
 		, .. initialize_config()};
 		
-	let eport = oldcomm::Port();
-	let ech = oldcomm::Chan(&eport);
-	let iconfig = connection::config_to_conn(&config, ech);
-	
+	let mut tasks = LinearMap();
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
+		
 	let request = make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg");
-	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&config, &mut tasks, sse_chan, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("404 Not Found");
@@ -580,18 +580,18 @@ fn path_outside_root()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"server/html"),
-		routes: ~[(~"GET", ~"/foo/bar", ~"foo")],
-		views: ~[(~"foo",  test_view)],
+		routes: ~[Route(~"foo", ~"GET", ~"/foo/bar")],
+		views: utils::linear_map_from_vector(~[(~"foo",  test_view)]),
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {true}
 		, .. initialize_config()};
 		
-	let eport = oldcomm::Port();
-	let ech = oldcomm::Chan(&eport);
-	let iconfig = connection::config_to_conn(&config, ech);
-	
+	let mut tasks = LinearMap();
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
+		
 	let request = make_request(~"/foo/../../baz.jpg", ~"text/html,image/jpeg");
-	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&config, &mut tasks, sse_chan, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("403 Forbidden");
@@ -605,18 +605,18 @@ fn read_error()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"server/html"),
-		routes: ~[(~"GET", ~"/foo/baz", ~"foo")],
-		views: ~[(~"foo",  test_view)],
+		routes: ~[Route(~"foo", ~"GET", ~"/foo/baz")],
+		views: utils::linear_map_from_vector(~[(~"foo",  test_view)]),
 		load_rsrc: err_loader,
 		valid_rsrc: |_path| {true}
 		, .. initialize_config()};
 		
-	let eport = oldcomm::Port();
-	let ech = oldcomm::Chan(&eport);
-	let iconfig = connection::config_to_conn(&config, ech);
-	
+	let mut tasks = LinearMap();
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
+		
 	let request = make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg");
-	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&config, &mut tasks, sse_chan, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("403 Forbidden");
@@ -630,18 +630,18 @@ fn bad_version()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"server/html"),
-		routes: ~[(~"GET", ~"/foo/baz", ~"foo")],
-		views: ~[(~"foo",  test_view)],
+		routes: ~[Route(~"foo", ~"GET", ~"/foo/baz")],
+		views: utils::linear_map_from_vector(~[(~"foo",  test_view)]),
 		load_rsrc: null_loader,
 		valid_rsrc: |_path| {true}
 		, .. initialize_config()};
 		
-	let eport = oldcomm::Port();
-	let ech = oldcomm::Chan(&eport);
-	let iconfig = connection::config_to_conn(&config, ech);
-	
+	let mut tasks = LinearMap();
+	let sse_port = oldcomm::Port();
+	let sse_chan = oldcomm::Chan(&sse_port);
+		
 	let request = HttpRequest {major_version: 100 , .. make_request(~"/foo/baz.jpg", ~"text/html,image/jpeg")};
-	let (header, body) = process_request(&iconfig, request, ~"10.11.12.13", ~"1.2.3.4");
+	let (header, body) = process_request(&config, &mut tasks, sse_chan, request, ~"10.11.12.13", ~"1.2.3.4");
 	
 	assert header.contains("Content-Type: text/html");
 	assert header.contains("505 HTTP Version Not Supported");
@@ -660,18 +660,14 @@ fn bad_template()
 		hosts: ~[~"localhost"],
 		server_info: ~"unit test",
 		resources_root: GenericPath::from_str(~"server/html"),
-		routes: ~[(~"GET", ~"/foo/baz", ~"foo")],
-		views: ~[(~"foo",  test_view)],
+		routes: ~[Route(~"foo", ~"GET", ~"/foo/baz")],
+		views: utils::linear_map_from_vector(~[(~"foo",  test_view)]),
 		load_rsrc: bad_loader,
 		valid_rsrc: |_path| {true},
-		settings: ~[(~"debug", ~"true")],
+		settings: utils::linear_map_from_vector(~[(~"debug", ~"true")]),
 		..initialize_config()};
 		
-	let eport = oldcomm::Port();
-	let ech = oldcomm::Chan(&eport);
-	let iconfig = connection::config_to_conn(&config, ech);
-	
-	match load_template(&iconfig, &GenericPath::from_str(~"blah.html"))
+	match load_template(&config, &GenericPath::from_str(~"blah.html"))
 	{
 		result::Ok(ref v) =>
 		{

@@ -1,6 +1,8 @@
 //! Types and functions used to configure rwebserve.
 //use mustache::*;
 use core::path::{GenericPath};
+use core::send_map::linear::{LinearMap};
+use std::map::{HashMap};
 use std::base64::*;
 
 /// Configuration information for the web server.
@@ -9,8 +11,7 @@ use std::base64::*;
 /// * port is the TCP port that the server listens on.
 /// * server_info is included in the HTTP response and should include the server name and version.
 /// * resources_root should be a path to where the files associated with URLs are loaded from.
-/// * routes: maps HTTP methods ("GET") and URI templates ("hello/{name}") to route names ("greeting"). 
-///    To support non-text/html types append the template with "<some/type>".
+/// * routes: maps HTTP request information to a route name.
 /// * views: maps route names to view handler functions.
 /// * static_handler: used to handle URIs that don't match routes, but are found beneath resources_root.
 /// * is_template: returns true if the path is to a mustache template.
@@ -30,17 +31,17 @@ pub struct Config
 	pub port: u16,
 	pub server_info: ~str,
 	pub resources_root: Path,
-	pub routes: ~[(~str, ~str, ~str)],					// better to use hashmap, but hashmaps cannot be sent
-	pub views: ~[(~str, ResponseHandler)],
+	pub routes: ~[(Route)],
+	pub views: LinearMap<~str, ResponseHandler>,
 	pub static_handler: ResponseHandler,
 	pub is_template: IsTemplateFile,
-	pub sse: ~[(~str, OpenSse)],
+	pub sse: LinearMap<~str, OpenSse>,
 	pub missing: ResponseHandler,
-	pub static_types: ~[(~str, ~str)],
+	pub static_types: LinearMap<~str, ~str>,
 	pub read_error: ~str,
 	pub load_rsrc: RsrcLoader,
 	pub valid_rsrc: RsrcExists,
-	pub settings: ~[(~str, ~str)],
+	pub settings: LinearMap<~str, ~str>,
 }
 
 /// Information about incoming http requests. Passed into view functions.
@@ -61,9 +62,9 @@ pub struct Request
 	pub local_addr: ~str,
 	pub remote_addr: ~str,
 	pub path: ~str,
-	pub matches: HashMap<@~str, @~str>,
+	pub matches: LinearMap<~str, ~str>,
 	pub params: IMap<@~str, @~str>,
-	pub headers: HashMap<@~str, @~str>,
+	pub headers: LinearMap<~str, ~str>,
 	pub body: ~str,
 	
 	drop {}			// TODO: enable this (was getting a compiler assert earlier)
@@ -82,10 +83,10 @@ pub struct Request
 pub struct Response
 {
 	pub status: ~str,
-	pub headers: HashMap<@~str, @~str>,
+	pub headers: LinearMap<~str, ~str>,
 	pub body: Body,
-	pub template: ~str,				// an URL path is very similar to a path::PosixPath, but that is conditionally compiled in
-	pub context: HashMap<@~str, mustache::Data>,
+	pub template: ~str,									// an URL path is very similar to a path::PosixPath, but that is conditionally compiled in
+	pub context: HashMap<@~str, mustache::Data>,	//  mustache wants HashMaps
 	
 	drop {}			// TODO: enable this (was getting a compiler assert earlier)
 }
@@ -145,10 +146,10 @@ pub impl Body : ToStr
 /// * context: new entries will often be added. If template is not actually a template file empty the context.
 /// 
 /// After the function returns a base-path entry is added to the response.context with the url to the directory containing the template file.
-pub type ResponseHandler = fn~ (config: &connection::ConnConfig, request: &Request, response: Response) -> Response;
+pub type ResponseHandler = fn~ (config: &Config, request: &Request, response: Response) -> Response;
 
 /// Returns true if the file at path should be treated as a mustache template.
-pub type IsTemplateFile = fn~ (config: &connection::ConnConfig, path: &str) -> bool;
+pub type IsTemplateFile = fn~ (config: &Config, path: &str) -> bool;
 
 /// Maps a path rooted at resources_root to a resource body.
 pub type RsrcLoader = fn~ (path: &Path) -> result::Result<~[u8], ~str>;
@@ -158,10 +159,24 @@ pub type RsrcExists = fn~ (path: &Path) -> bool;
 
 pub struct Route
 {
+	pub route: ~str,
 	pub method: ~str,
 	pub template: ~[uri_template::Component],
 	pub mime_type: ~str,
-	pub route: ~str,
+}
+
+/// route is an arbitrary name.
+/// method is "GET", "PUSH", etc.
+/// template is "/home", "/blueprint/{site}/{building}", "/csv/*path" (path will match an arbitrary number of components), etc
+pub fn Route(route: ~str, method: ~str, template: ~str) -> Route
+{
+	TypedRoute(route, method, template, ~"text/html")
+}
+
+/// Like the route function except that mime_type does not default to "text/html".
+pub fn TypedRoute(route: ~str, method: ~str, template: ~str, mime_type: ~str) -> Route
+{
+	Route {route: route, method: method, template: uri_template::compile(template), mime_type: mime_type}
 }
 
 /// Initalizes several config fields.
@@ -183,12 +198,12 @@ pub fn initialize_config() -> Config
 		server_info: ~"",
 		resources_root: GenericPath::from_str(~""),
 		routes: ~[],
-		views: ~[],
+		views: LinearMap(),
 		static_handler: static_view,
 		is_template: is_text_file,
-		sse: ~[],
+		sse: LinearMap(),
 		missing: missing_view,
-		static_types: ~[
+		static_types: utils::linear_map_from_vector(~[
 			(~".m4a", ~"audio/mp4"),
 			(~".m4b", ~"audio/mp4"),
 			(~".mp3", ~"audio/mpeg"),
@@ -214,7 +229,7 @@ pub fn initialize_config() -> Config
 			(~".mov", ~"video/quicktime"),
 			(~".mpg", ~"video/mpeg"),
 			(~".mpeg", ~"video/mpeg"),
-			(~".qt", ~"video/quicktime")],
+			(~".qt", ~"video/quicktime")]),
 		read_error: ~"<!DOCTYPE html>
 	<meta charset=utf-8>
 	
@@ -223,7 +238,7 @@ pub fn initialize_config() -> Config
 	<p>Could not read URL {{request-path}}.</p>",
 		load_rsrc: io::read_whole_file,
 		valid_rsrc: is_valid_rsrc,
-		settings: ~[],
+		settings: LinearMap(),
 	}
 }
 
@@ -234,7 +249,7 @@ pub fn is_valid_rsrc(path: &Path) -> bool
 
 // Default config.missing handler. Assumes that there is a "not-found.html"
 // file at the resource root.
-pub fn missing_view(_config: &connection::ConnConfig, _request: &Request, response: Response) -> Response
+pub fn missing_view(_config: &Config, _request: &Request, response: Response) -> Response
 {
 	Response {template: ~"not-found.html", ..response}
 }
@@ -246,7 +261,7 @@ pub fn missing_view(_config: &connection::ConnConfig, _request: &Request, respon
 // 1) It's expected that expanding a non-template file is not going to be a performance problem.
 // 2) Using files like *.html.mustache screws up syntax highlighting in editors.
 // 3) Users can install a new is_template closure to do something different.
-pub fn static_view(config: &connection::ConnConfig, _request: &Request, response: Response) -> Response
+pub fn static_view(config: &Config, _request: &Request, response: Response) -> Response
 {
 	let path = mustache::compile_str("{{request-path}}").render_data(mustache::Map(response.context));
 	//let path = mustache::render_str("{{request-path}}", response.context);
@@ -270,14 +285,14 @@ pub fn static_view(config: &connection::ConnConfig, _request: &Request, response
 	}
 }
 
-pub fn is_text_file(config: &connection::ConnConfig, path: &str) -> bool
+pub fn is_text_file(config: &Config, path: &str) -> bool
 {
 	match str::rfind_char(path, '.')
 	{
 		option::Some(index) =>
 		{
 			let ext = path.slice(index, path.len());
-			match config.static_type_table.find(@ext)
+			match config.static_types.find(&ext)
 			{
 				option::Some(mine_type) => mine_type.starts_with(~"text/"),
 				option::None => false,
