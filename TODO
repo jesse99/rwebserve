@@ -7,6 +7,9 @@ RESTful Web Services Cookbook
 tcpdump -i lo0 -w packets.pcap tcp
 
 
+* Switch to using pipes:
+	- https://github.com/mozilla/rust/issues/2830
+	- https://github.com/mozilla/rust/issues/4284
 * Should add an image to sample server (or just add support for favicon.ico)
 * Log client ip, method, url
 * Need a way for users to generate URLs:

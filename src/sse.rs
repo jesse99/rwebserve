@@ -49,7 +49,7 @@ pub fn process_sse(config: &Config, tasks: &mut LinearMap<~str, ControlChan>, pu
 		}
 		option::None =>
 		{
-			if !OpenSse(config, tasks, request, push_data)
+			if !openSse(config, tasks, request, push_data)
 			{
 				code = ~"404";
 				mesg = ~"Not Found";
@@ -65,9 +65,9 @@ pub fn process_sse(config: &Config, tasks: &mut LinearMap<~str, ControlChan>, pu
 }
 
 // TODO: Chrome, at least, doesn't seem to close EventSources so we need to time these out.
-pub fn OpenSse(config: &Config, tasks: &mut LinearMap<~str, ControlChan>, request: &Request, push_data: PushChan) -> bool
+pub fn openSse(config: &Config, tasks: &mut LinearMap<~str, ControlChan>, request: &Request, push_data: PushChan) -> bool
 {
-	match config.sse.find(@copy request.path)
+	match config.sse.find(&request.path)
 	{
 		option::Some(ref opener) =>
 		{
