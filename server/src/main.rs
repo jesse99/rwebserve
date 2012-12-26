@@ -233,11 +233,9 @@ fn main()
 	// using settings would be simpler).
 	let up: server::OpenSse = |_config: &Config, request: &Request, push| {uptime_sse(registrar, request, push)};
 	
-	// TODO: Shouldn't need all of these damned explicit types but rustc currently
-	// has problems with type inference woth closures and borrowed pointers.
 	let greeting_v: ResponseHandler = greeting_view;
-	let home_v: ResponseHandler = |config: &Config, request: &Request, response: Response, copy options| {home_view(config, &options, request, response)};
-	let shutdown_v: ResponseHandler = |_config: &Config, _request: &Request, _response: Response| {info!("received shutdown request"); libc::exit(0)};
+	let home_v: ResponseHandler = |config, request, response, copy options| {home_view(config, &options, request, response)};
+	let shutdown_v: ResponseHandler = |_config, _request, _response| {info!("received shutdown request"); libc::exit(0)};
 	
 	let config = server::Config
 	{
